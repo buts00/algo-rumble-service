@@ -87,17 +87,18 @@ async def get_new_access_token(token_details: dict = Depends(RefreshTokenBearer(
     if datetime.fromtimestamp(expiry_timestamp) > datetime.now():
         new_access_token = create_access_token(user_data=token_details["user"])
 
-    return JSONResponse(content={"access_token": new_access_token})
-    raise HTTPException(
-        status_code=status.HTTP_400_BAD_REQUEST, detail="invalid or expired token"
-    )
+        return JSONResponse(content={"access_token": new_access_token})
+    else:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="invalid or expired token"
+        )
 
 
 @auth_router.get("/logout")
 async def revoke_token(token_details: dict = Depends(AccessTokenBearer())):
     jti = token_details["jti"]
 
-    redis_client.token_in_blocklist(jti)
+    redis_client.add_jti_to_blocklist(jti)
 
     return JSONResponse(
         content={"message": "logged out succesfully"}, status_code=status.HTTP_200_OK
