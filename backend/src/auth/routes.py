@@ -101,7 +101,7 @@ async def revoke_token(token_details: dict = Depends(AccessTokenBearer())):
     redis_client.add_jti_to_blocklist(jti)
 
     return JSONResponse(
-        content={"message": "logged out succesfully"}, status_code=status.HTTP_200_OK
+        content={"message": "logged out successfully"}, status_code=status.HTTP_200_OK
     )
 
 

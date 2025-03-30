@@ -1,3 +1,5 @@
+from pydantic import EmailStr
+
 from .models import User
 from sqlmodel.ext.asyncio.session import AsyncSession
 from sqlmodel import select
@@ -7,12 +9,12 @@ from .utils import generate_password_hash
 
 class UserService:
     @staticmethod
-    async def get_user_by_email(email: str, session: AsyncSession):
+    async def get_user_by_email(email: EmailStr, session: AsyncSession):
         statement = select(User).where(User.email == email)
-        result = await session.exec(statement)
-        return result.first()
+        result = await session.execute(statement)
+        return result.scalar_one_or_none()
 
-    async def user_exists(self, email: str, session: AsyncSession):
+    async def user_exists(self, email: EmailStr, session: AsyncSession):
         return await self.get_user_by_email(email, session) is not None
 
     @staticmethod

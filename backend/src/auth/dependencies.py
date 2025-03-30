@@ -45,7 +45,8 @@ class TokenBearer(HTTPBearer):
 
         return token_data
 
-    def token_valid(self, token: str) -> bool:
+    @staticmethod
+    def token_valid(token: str) -> bool:
         token_data = decode_token(token)
 
         return token_data is not None
