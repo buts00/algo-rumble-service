@@ -30,12 +30,8 @@ class User(SQLModel, table=True):
         default=0.0, sa_column=Column(pg.DOUBLE_PRECISION, default=0.0)
     )
     is_verified: bool = Field(default=False)
-    created_at: datetime = Field(
-        sa_column=Column(pg.TIMESTAMP, default=datetime.now)
-    )
-    updated_at: datetime = Field(
-        sa_column=Column(pg.TIMESTAMP, default=datetime.now)
-    )
+    created_at: datetime = Field(sa_column=Column(pg.TIMESTAMP, default=datetime.now))
+    updated_at: datetime = Field(sa_column=Column(pg.TIMESTAMP, default=datetime.now))
 
     def __repr__(self):
         return f"<User {self.username} (Rating: {self.rating})>"
