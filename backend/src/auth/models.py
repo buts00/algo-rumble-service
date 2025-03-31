@@ -31,10 +31,10 @@ class User(SQLModel, table=True):
     )
     is_verified: bool = Field(default=False)
     created_at: datetime = Field(
-        sa_column=Column(pg.TIMESTAMP, default_factory=datetime.now)
+        sa_column=Column(pg.TIMESTAMP, default=datetime.now)
     )
     updated_at: datetime = Field(
-        sa_column=Column(pg.TIMESTAMP, default_factory=datetime.now)
+        sa_column=Column(pg.TIMESTAMP, default=datetime.now)
     )
 
     def __repr__(self):

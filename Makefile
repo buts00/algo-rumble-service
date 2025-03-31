@@ -1,4 +1,3 @@
-# Targets
 .PHONY: lint test run build up down clean deps
 
 # Лінтер
@@ -16,9 +15,9 @@ build:
 
 # Запуск через Docker Compose
 up:
-	docker-compose up -- build
-
-# Зупинка контейнерів
+	docker-compose up -d --wait db redis
+	docker-compose up -d judge0
+	docker-compose up -d web
 down:
 	docker-compose down
 

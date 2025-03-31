@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 from backend.src.auth.routes import auth_router
+from backend.src.judge.routes import judge_router
 from contextlib import asynccontextmanager
 from backend.src.db.main import init_db
 
@@ -21,3 +22,4 @@ app = FastAPI(
 )
 
 app.include_router(auth_router, prefix=f"/api/{version}/auth", tags=["auth"])
+app.include_router(judge_router, prefix=f"/api/{version}/judge", tags=["judge"])

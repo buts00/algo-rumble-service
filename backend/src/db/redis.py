@@ -14,6 +14,7 @@ class RedisClient:
                 host=Config.REDIS_HOST,
                 port=Config.REDIS_PORT,
                 db=0,
+                password=Config.REDIS_PASSWORD,
                 decode_responses=True,
             )
 

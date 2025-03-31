@@ -1,4 +1,5 @@
 services:
+  # Your existing services (db, redis, web)
   db:
     image: postgres:15.12
     environment:
@@ -12,16 +13,23 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    volumes:
+      - data:/var/lib/postgresql/data/  # Add volume for data persistence
 
   redis:
     image: redis:7.4.2
+    command: [ "redis-server", "--requirepass", "${REDIS_PASSWORD}" ]
+    environment:
+      - REDIS_PASSWORD=${REDIS_PASSWORD}  # Pass the password explicitly
     ports:
       - "6379:6379"
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: [ "CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping" ]
       interval: 10s
       timeout: 5s
       retries: 5
+
+
 
   web:
     build:
@@ -40,8 +48,56 @@ services:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB}
+      JUDGE0_AUTH_TOKEN: ${JUDGE0_AUTH_TOKEN}
+      JUDGE0_URL: ${JUDGE0_URL}
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
     depends_on:
       redis:
         condition: service_healthy
       db:
         condition: service_healthy
+
+  # Judge0 services
+  judge0-server:
+    image: judge0/judge0:1.13.1
+    volumes:
+      - ./judge0.conf:/judge0.conf:ro
+    ports:
+      - "2358:2358"
+    privileged: true
+    environment:
+      POSTGRES_HOST: db          # Use your existing Postgres service
+      POSTGRES_USER: ${POSTGRES_USER}    # Match your existing credentials
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+      REDIS_HOST: redis           # Use your existing Redis service
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: always
+
+  judge0-workers:
+    image: judge0/judge0:1.13.1
+    command: ["./scripts/workers"]
+    volumes:
+      - ./judge0.conf:/judge0.conf:ro
+    privileged: true
+    environment:
+      POSTGRES_HOST: db
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+      REDIS_HOST: redis
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: always
+
+volumes:
+  data:  # Ensure this matches your existing volume
