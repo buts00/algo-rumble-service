@@ -1,19 +1,18 @@
 from datetime import timedelta, datetime
-from backend.src.config import Config
+from src.config import Config
 from passlib.context import CryptContext
 import jwt
 import uuid
 import logging
+import os
 
-ACCESS_TOKEN_EXPIRY = 3600
+ACCESS_TOKEN_EXPIRY = os.getenv("ACCESS_TOKEN_EXPIRY")
 
 passwd_context = CryptContext(schemes=["bcrypt"])
 
 
 def generate_password_hash(password: str) -> str:
-    hash = passwd_context.hash(password)
-
-    return hash
+    return passwd_context.hash(password)
 
 
 def verify_password(password: str, hash: str) -> bool:

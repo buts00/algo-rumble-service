@@ -1,12 +1,12 @@
 import redis
-from backend.src.config import Config
+from src.config import Config
 from fastapi import HTTPException
 
 
 class RedisClient:
     def __init__(self):
         self.redis = None
-        self.JTI_EXPIRY = Config.JWT_ACCESS_TOKEN_EXPIRY  # Час життя токена з конфігу
+        self.JTI_EXPIRY = Config.JWT_ACCESS_TOKEN_EXPIRY
 
     def connect(self):
         try:

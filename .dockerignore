@@ -1,7 +1,10 @@
-.git
-__pycache__
-*.pyc
-*.pyo
-*.pyd
+**/__pycache__
+**/.venv
+**/.git
+**/.vscode
+**/*.log
+**/*.pyc
+**/*.pyo
+**/*.pyd
+.DS_Store
 .env
-.venv

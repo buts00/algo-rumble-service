@@ -1,9 +1,9 @@
 from fastapi.security import HTTPBearer
 from fastapi import Request, status, Depends
-from .utils import decode_token
+from .util import decode_token
 from fastapi.exceptions import HTTPException
-from backend.src.db.redis import RedisClient
-from backend.src.db.main import get_session
+from src.db.redis import RedisClient
+from src.db.main import get_session
 from sqlmodel.ext.asyncio.session import AsyncSession
 from .service import UserService
 
