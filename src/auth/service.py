@@ -1,10 +1,10 @@
 from pydantic import EmailStr
 
-from .models import User
+from .model import User
 from sqlmodel.ext.asyncio.session import AsyncSession
 from sqlmodel import select
 from .schemas import UserCreateModel, UserRole
-from .utils import generate_password_hash
+from .util import generate_password_hash
 
 
 class UserService:

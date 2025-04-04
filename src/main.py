@@ -1,6 +1,6 @@
 from fastapi import FastAPI
-from src.auth.routes import auth_router
-from src.judge.routes import judge_router
+from src.auth.route import auth_router
+from src.judge.route import judge_router
 from contextlib import asynccontextmanager
 from src.db.main import init_db
 

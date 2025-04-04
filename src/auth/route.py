@@ -4,10 +4,10 @@ from fastapi.exceptions import HTTPException
 from .schemas import UserCreateModel, UserModel, UserLoginModel
 from .service import UserService
 from src.db.main import get_session
-from .utils import create_access_token, verify_password
+from .util import create_access_token, verify_password
 from datetime import timedelta, datetime
 from fastapi.responses import JSONResponse
-from .dependencies import RefreshTokenBearer, AccessTokenBearer, get_current_user
+from .dependency import RefreshTokenBearer, AccessTokenBearer, get_current_user
 from src.db.redis import RedisClient
 
 auth_router = APIRouter()

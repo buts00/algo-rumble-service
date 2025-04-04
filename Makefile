@@ -16,8 +16,12 @@ build:
 # Запуск через Docker Compose
 up:
 	docker-compose up -d --build
+
 down:
 	docker-compose down -v
+
+open_db:
+    docker exec -it algo-rumble-service-db-1 psql -U postgres
 
 clean:
 	find . -type d -name "__pycache__" -exec rm -rf {} +
