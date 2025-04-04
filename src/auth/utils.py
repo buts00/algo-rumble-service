@@ -1,5 +1,5 @@
 from datetime import timedelta, datetime
-from backend.src.config import Config
+from src.config import Config
 from passlib.context import CryptContext
 import jwt
 import uuid

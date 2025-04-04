@@ -7,7 +7,7 @@ lint:
 
 # Запуск локально (без Docker)
 run:
-	uvicorn backend.src.main:app --reload
+	uvicorn src.main:app --reload
 
 # Збірка Docker-образу
 build:
@@ -15,21 +15,17 @@ build:
 
 # Запуск через Docker Compose
 up:
-	docker-compose up -d --wait db redis
-	docker-compose up -d judge0
-	docker-compose up -d web
+	docker-compose up -d --build
 down:
-	docker-compose down
+	docker-compose down -v
 
-# Очистка кешу та тимчасових файлів
 clean:
 	find . -type d -name "__pycache__" -exec rm -rf {} +
 	find . -type d -name ".pytest_cache" -exec rm -rf {} +
 
-# Встановлення залежностей
+
 deps:
 	pip install -r system/requirements.txt
 
-# Міграції БД (якщо буде потрібно)
 migrate:
 	alembic upgrade head

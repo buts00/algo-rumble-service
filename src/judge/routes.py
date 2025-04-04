@@ -1,6 +1,6 @@
 from fastapi import APIRouter
-from backend.src.judge.client import Judge0Client
-from backend.src.config import Config
+from src.judge.client import Judge0Client
+from src.config import Config
 
 judge_router = APIRouter()
 

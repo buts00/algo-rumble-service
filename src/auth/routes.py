@@ -3,12 +3,12 @@ from sqlalchemy.ext.asyncio.session import AsyncSession
 from fastapi.exceptions import HTTPException
 from .schemas import UserCreateModel, UserModel, UserLoginModel
 from .service import UserService
-from backend.src.db.main import get_session
+from src.db.main import get_session
 from .utils import create_access_token, verify_password
 from datetime import timedelta, datetime
 from fastapi.responses import JSONResponse
 from .dependencies import RefreshTokenBearer, AccessTokenBearer, get_current_user
-from backend.src.db.redis import RedisClient
+from src.db.redis import RedisClient
 
 auth_router = APIRouter()
 user_service = UserService()

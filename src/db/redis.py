@@ -1,5 +1,5 @@
 import redis
-from backend.src.config import Config
+from src.config import Config
 from fastapi import HTTPException
 
 
