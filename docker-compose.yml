@@ -23,7 +23,7 @@ services:
     image: redis:7.4.2
     command: [ "redis-server", "--requirepass", "${REDIS_PASSWORD}" ]
     environment:
-      - REDIS_PASSWORD=${REDIS_PASSWORD}  # Pass the password explicitly
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
     ports:
       - "6379:6379"
     healthcheck:
@@ -32,8 +32,6 @@ services:
       timeout: 5s
       retries: 5
 
-
-
   web:
     build:
       context: .
@@ -41,26 +39,30 @@ services:
     ports:
       - "8000:8000"
     environment:
-      DATABASE_URL: ${DATABASE_URL}
       JWT_SECRET: ${JWT_SECRET}
       JWT_ALGORITHM: ${JWT_ALGORITHM}
       JWT_ACCESS_TOKEN_EXPIRY: ${JWT_ACCESS_TOKEN_EXPIRY}
       JWT_REFRESH_TOKEN_EXPIRY: ${JWT_REFRESH_TOKEN_EXPIRY}
-      REDIS_HOST: ${REDIS_HOST}
-      REDIS_PORT: ${REDIS_PORT}
+      API_BASE_URL: ${API_BASE_URL}
+      DATABASE_URL: ${DATABASE_URL}
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB}
+      JUDGE0_DB_URL: ${JUDGE0_DB_URL}
+      JUDGE0_DB: ${JUDGE0_DB}
+      JUDGE0_PASSWORD: ${JUDGE0_PASSWORD}
+      JUDGE0_USER: ${JUDGE0_USER}
       JUDGE0_AUTH_TOKEN: ${JUDGE0_AUTH_TOKEN}
       JUDGE0_URL: ${JUDGE0_URL}
       REDIS_PASSWORD: ${REDIS_PASSWORD}
+      REDIS_HOST: ${REDIS_HOST}
+      REDIS_PORT: ${REDIS_PORT}
     depends_on:
       redis:
         condition: service_healthy
       db:
         condition: service_healthy
 
-  # Judge0 services
   judge0-server:
     image: judge0/judge0:1.13.1
     volumes:
@@ -84,9 +86,9 @@ services:
 
   judge0-workers:
     image: judge0/judge0:1.13.1
-    command: ["./scripts/workers"]
     volumes:
       - ./judge0.conf:/judge0.conf:ro
+    command: ["./scripts/workers"]
     privileged: true
     environment:
       POSTGRES_HOST: db
@@ -103,4 +105,4 @@ services:
     restart: always
 
 volumes:
-  data:  # Ensure this matches your existing volume
+  data:

@@ -14,6 +14,9 @@ class Settings(BaseSettings):
     # JWT configuration
     JWT_SECRET: str
     JWT_ALGORITHM: str
+    REDIS_HOST: str
+    REDIS_PORT: int
+    REDIS_PASSWORD: str
     JWT_ACCESS_TOKEN_EXPIRY: int = 3600
     JWT_REFRESH_TOKEN_EXPIRY: int = 2592000
 
