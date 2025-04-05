@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, status
 from sqlalchemy.ext.asyncio.session import AsyncSession
 from fastapi.exceptions import HTTPException
-from .schema import UserCreateModel, UserModel, UserLoginModel
+from .schemas import UserCreateModel, UserModel, UserLoginModel
 from .service import UserService
 from src.db.main import get_session
 from .util import create_access_token, verify_password
@@ -10,11 +10,13 @@ from fastapi.responses import JSONResponse
 from .dependency import RefreshTokenBearer, AccessTokenBearer, get_current_user
 from src.db.redis import RedisClient
 
+from ..config import Config
+
 auth_router = APIRouter()
 user_service = UserService()
-REFRESH_TOKEN_EXPIRY = 2
 redis_client = RedisClient()
 redis_client.connect()
+JWT_REFRESH_TOKEN_EXPIRY = Config.JWT_REFRESH_TOKEN_EXPIRY
 
 
 @auth_router.post(
@@ -64,7 +66,7 @@ async def login_users(
                     "user_uid": str(user.uid),
                 },
                 refresh=True,
-                expiry=timedelta(days=REFRESH_TOKEN_EXPIRY),
+                expiry=timedelta(days=JWT_REFRESH_TOKEN_EXPIRY),
             )
 
             return JSONResponse(

@@ -4,9 +4,8 @@ from passlib.context import CryptContext
 import jwt
 import uuid
 import logging
-import os
 
-ACCESS_TOKEN_EXPIRY = os.getenv("ACCESS_TOKEN_EXPIRY")
+JWT_ACCESS_TOKEN_EXPIRY = Config.JWT_ACCESS_TOKEN_EXPIRY
 
 passwd_context = CryptContext(schemes=["bcrypt"])
 
@@ -25,7 +24,9 @@ def create_access_token(
     payload = {
         "user": user_data,
         "exp": datetime.now()
-        + (expiry if expiry is not None else timedelta(seconds=ACCESS_TOKEN_EXPIRY)),
+        + (
+            expiry if expiry is not None else timedelta(seconds=JWT_ACCESS_TOKEN_EXPIRY)
+        ),
         "jti": str(uuid.uuid4()),
         "refresh": refresh,
     }

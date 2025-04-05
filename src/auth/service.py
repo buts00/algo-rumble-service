@@ -3,7 +3,7 @@ from pydantic import EmailStr
 from .model import User
 from sqlmodel.ext.asyncio.session import AsyncSession
 from sqlmodel import select
-from .schema import UserCreateModel, UserRole
+from .schemas import UserCreateModel, UserRole
 from .util import generate_password_hash
 
 

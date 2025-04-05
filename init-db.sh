@@ -1,15 +1,11 @@
 #!/bin/bash
-
 set -e
 
-# Створення бази judge0 якщо не існує
 psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" <<-EOSQL
-    SELECT 'CREATE DATABASE judge0'
-    WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'judge0')\gexec
-EOSQL
+    CREATE DATABASE judge0;
+    CREATE USER judge0 WITH PASSWORD '$JUDGE0_PASSWORD';
+    GRANT ALL PRIVILEGES ON DATABASE judge0 TO judge0;
 
-# Додаткові налаштування для бази judge0 (приклад)
-psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "judge0" <<-EOSQL
-    CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
-    -- Додаткові SQL-команди для ініціалізації...
+    -- Don't create main DB here - let Docker's POSTGRES_DB handle it
+    GRANT ALL PRIVILEGES ON DATABASE $POSTGRES_DB TO $POSTGRES_USER;
 EOSQL
