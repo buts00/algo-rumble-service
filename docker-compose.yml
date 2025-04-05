@@ -9,7 +9,7 @@ services:
       JUDGE0_PASSWORD: ${JUDGE0_PASSWORD}
       POSTGRES_MULTIPLE_DATABASES: "judge0,${POSTGRES_DB}"
     ports:
-      - "5432:5432"
+      - "5435:5432"
     healthcheck:
       test: [ "CMD", "pg_isready", "-U", "${POSTGRES_USER}" ]
       interval: 10s
@@ -65,6 +65,7 @@ services:
 
   judge0-server:
     image: judge0/judge0:1.13.1
+    platform: linux/amd64
     volumes:
       - ./judge0.conf:/judge0.conf:ro
     ports:
@@ -86,6 +87,7 @@ services:
 
   judge0-workers:
     image: judge0/judge0:1.13.1
+    platform: linux/amd64
     volumes:
       - ./judge0.conf:/judge0.conf:ro
     command: ["./scripts/workers"]
