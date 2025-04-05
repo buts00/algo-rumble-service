@@ -10,12 +10,13 @@ from fastapi.responses import JSONResponse
 from .dependency import RefreshTokenBearer, AccessTokenBearer, get_current_user
 from src.db.redis import RedisClient
 
+from ..config import Config
+
 auth_router = APIRouter()
 user_service = UserService()
-REFRESH_TOKEN_EXPIRY = 2
 redis_client = RedisClient()
 redis_client.connect()
-
+JWT_REFRESH_TOKEN_EXPIRY = Config.JWT_REFRESH_TOKEN_EXPIRY
 
 @auth_router.post(
     "/signup", response_model=UserModel, status_code=status.HTTP_201_CREATED
@@ -64,7 +65,7 @@ async def login_users(
                     "user_uid": str(user.uid),
                 },
                 refresh=True,
-                expiry=timedelta(days=REFRESH_TOKEN_EXPIRY),
+                expiry=timedelta(days=JWT_REFRESH_TOKEN_EXPIRY),
             )
 
             return JSONResponse(

@@ -1,16 +1,18 @@
 from fastapi.security import HTTPBearer
-from fastapi import Request, status, Depends
+from fastapi import Request
 from .util import decode_token
-from fastapi.exceptions import HTTPException
 from src.db.redis import RedisClient
-from src.db.main import get_session
-from sqlmodel.ext.asyncio.session import AsyncSession
 from .service import UserService
+from fastapi import Depends, HTTPException, status
+from fastapi.security import OAuth2PasswordBearer
+from jose import JWTError, jwt
+from src.config import Config
+from src.auth.schemas import UserModel
 
 user_service = UserService()
 redis_client = RedisClient()
 redis_client.connect()
-
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
 class TokenBearer(HTTPBearer):
     def __init__(self, auto_error=True):
@@ -73,12 +75,14 @@ class RefreshTokenBearer(TokenBearer):
             )
 
 
-async def get_current_user(
-    token_detail: dict = Depends(AccessTokenBearer()),
-    session: AsyncSession = Depends(get_session),
-):
-    user_email = token_detail["user"]["email"]
-
-    user = await user_service.get_user_by_email(user_email, session)
-
-    return user
+def get_current_user(token: str = Depends(oauth2_scheme)) -> UserModel:
+    try:
+        payload = jwt.decode(token, Config.JWT_SECRET, algorithms=[Config.JWT_ALGORITHM])
+        user = UserModel(**payload)
+        return user
+    except JWTError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Could not validate credentials",
+            headers={"WWW-Authenticate": "Bearer"},
+        )

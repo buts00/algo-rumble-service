@@ -5,15 +5,13 @@ import jwt
 import uuid
 import logging
 
-ACCESS_TOKEN_EXPIRY = 3600
+JWT_ACCESS_TOKEN_EXPIRY =Config.JWT_ACCESS_TOKEN_EXPIRY
 
 passwd_context = CryptContext(schemes=["bcrypt"])
 
 
 def generate_password_hash(password: str) -> str:
-    hash = passwd_context.hash(password)
-
-    return hash
+    return passwd_context.hash(password)
 
 
 def verify_password(password: str, hash: str) -> bool:
@@ -21,12 +19,12 @@ def verify_password(password: str, hash: str) -> bool:
 
 
 def create_access_token(
-    user_data: dict, expiry: timedelta = None, refresh: bool = False
+        user_data: dict, expiry: timedelta = None, refresh: bool = False
 ):
     payload = {
         "user": user_data,
         "exp": datetime.now()
-        + (expiry if expiry is not None else timedelta(seconds=ACCESS_TOKEN_EXPIRY)),
+               + (expiry if expiry is not None else timedelta(seconds=JWT_ACCESS_TOKEN_EXPIRY)),
         "jti": str(uuid.uuid4()),
         "refresh": refresh,
     }
