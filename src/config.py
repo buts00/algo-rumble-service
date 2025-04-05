@@ -9,6 +9,7 @@ ENV_PATH = os.path.join(os.path.dirname(__file__), "..", ".env")
 # Load the .env so environment variables are set before Pydantic reads them
 load_dotenv(ENV_PATH)
 
+
 class Settings(BaseSettings):
     # JWT configuration
     JWT_SECRET: str
@@ -41,7 +42,8 @@ class Settings(BaseSettings):
         # Instructs Pydantic to look for .env in the parent directory of "src"
         env_file=ENV_PATH,
         env_file_encoding="utf-8",
-        extra="ignore"
+        extra="ignore",
     )
+
 
 Config = Settings()

@@ -1,5 +1,4 @@
 from fastapi import APIRouter, HTTPException, Depends, status
-from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import SQLAlchemyError
 from src.judge.client import Judge0Client
@@ -17,19 +16,22 @@ judge_router = APIRouter()
 
 judge_client = Judge0Client(Config.JUDGE0_URL, Config.JUDGE0_AUTH_TOKEN)
 
+
 @judge_router.post("/submissions")
 async def submit_code(
-        submission_data: SubmissionRequest,
-        db: Session = Depends(get_session),
-        current_user: UserModel = Depends(get_current_user)
+    submission_data: SubmissionRequest,
+    db: Session = Depends(get_session),
+    current_user: UserModel = Depends(get_current_user),
 ):
     try:
         token = judge_client.submit_code(
-            submission_data.source_code,
-            submission_data.language_id
+            submission_data.source_code, submission_data.language_id
         )
     except Exception as e:
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Error submitting code: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error submitting code: {str(e)}",
+        )
 
     try:
         logger.info(current_user.uid)
@@ -38,21 +40,25 @@ async def submit_code(
             session=db,
             user_id=current_user.uid,
             submission_token=token,
-            problem_id=submission_data.problem_id
+            problem_id=submission_data.problem_id,
         )
     except SQLAlchemyError as e:
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Database error: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Database error: {str(e)}",
+        )
 
     return {"token": token}
 
+
 @judge_router.get("/submissions/{token}")
-async def get_result(
-        token: str,
-        current_user: UserModel = Depends(get_current_user)
-):
+async def get_result(token: str, current_user: UserModel = Depends(get_current_user)):
     try:
         result = judge_client.get_result(token)
     except Exception as e:
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Error retrieving result: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error retrieving result: {str(e)}",
+        )
 
     return result

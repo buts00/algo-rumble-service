@@ -18,6 +18,7 @@ redis_client = RedisClient()
 redis_client.connect()
 JWT_REFRESH_TOKEN_EXPIRY = Config.JWT_REFRESH_TOKEN_EXPIRY
 
+
 @auth_router.post(
     "/signup", response_model=UserModel, status_code=status.HTTP_201_CREATED
 )

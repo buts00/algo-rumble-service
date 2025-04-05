@@ -14,6 +14,7 @@ redis_client = RedisClient()
 redis_client.connect()
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
+
 class TokenBearer(HTTPBearer):
     def __init__(self, auto_error=True):
         super().__init__(auto_error=auto_error)
@@ -77,7 +78,9 @@ class RefreshTokenBearer(TokenBearer):
 
 def get_current_user(token: str = Depends(oauth2_scheme)) -> UserModel:
     try:
-        payload = jwt.decode(token, Config.JWT_SECRET, algorithms=[Config.JWT_ALGORITHM])
+        payload = jwt.decode(
+            token, Config.JWT_SECRET, algorithms=[Config.JWT_ALGORITHM]
+        )
         user = UserModel(**payload)
         return user
     except JWTError:

@@ -3,6 +3,7 @@ import uuid
 from pydantic import BaseModel
 from typing import Optional
 
+
 class SubmissionRequest(BaseModel):
     user_id: uuid.UUID
     problem_id: int
@@ -11,9 +12,11 @@ class SubmissionRequest(BaseModel):
     stdin: Optional[str] = ""
     expected_output: Optional[str] = ""
 
+
 class SubmissionResponse(BaseModel):
     token: str
     message: str
+
 
 class CodeSubmission(BaseModel):
     source_code: str
