@@ -1,7 +1,8 @@
+import logging
+
 import requests
 from fastapi import HTTPException
 from typing import Optional
-from aiohttp import ClientError
 
 logger = logging.getLogger(__name__)
 
