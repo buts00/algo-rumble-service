@@ -21,7 +21,7 @@ down:
 	docker-compose down -v
 
 open_db:
-    docker exec -it algo-rumble-service-db-1 psql -U postgres
+	docker exec -it algo-rumble-service-db-1 psql -U postgres
 
 clean:
 	find . -type d -name "__pycache__" -exec rm -rf {} +
@@ -29,7 +29,7 @@ clean:
 
 
 deps:
-	pip install -r system/requirements.txt
+	pip install -r requirements.txt
 
 migrate:
 	alembic upgrade head
