@@ -20,7 +20,6 @@ def create_access_token(
     user_data: dict, expiry: timedelta = timedelta(Config.JWT_ACCESS_TOKEN_EXPIRY)
 ):
     payload = {
-        "id": user_data["id"],
         "user": user_data,
         "exp": datetime.now() + expiry,
         "jti": str(uuid.uuid4()),
@@ -38,7 +37,6 @@ def create_refresh_token(
     user_data: dict, expiry: timedelta = timedelta(Config.JWT_REFRESH_TOKEN_EXPIRY)
 ):
     payload = {
-        "id": user_data["id"],
         "user": user_data,
         "exp": datetime.now() + expiry,
         "jti": str(uuid.uuid4()),

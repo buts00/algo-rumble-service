@@ -1,6 +1,5 @@
-from datetime import datetime
 from enum import Enum
-from pydantic import BaseModel, Field, EmailStr
+from pydantic import BaseModel, Field
 import uuid
 
 
@@ -24,6 +23,17 @@ class UserModel(UserBase):
     id: uuid.UUID
     role: UserRole
     rating: int
+
+    class Config:
+        from_attributes = True
+
+
+class UserResponseModel(BaseModel):
+    id: uuid.UUID
+    username: str
+    role: UserRole
+    rating: int
+    country_code: str
 
     class Config:
         from_attributes = True

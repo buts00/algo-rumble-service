@@ -1,4 +1,4 @@
-.PHONY: lint test run build up down clean deps
+.PHONY: lint test run build up down clean deps nuke
 
 lint:
 	ruff check .
@@ -15,6 +15,9 @@ up:
 
 down:
 	docker-compose down -v
+
+nuke:
+	docker-compose down --remove-orphans
 
 open_db:
 	docker exec -it algo-rumble-service-db-1 psql -U postgres

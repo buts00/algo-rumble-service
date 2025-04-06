@@ -5,16 +5,14 @@ from starlette.responses import JSONResponse
 from .dependency import (
     get_user_service,
     RefreshTokenFromCookie,
-    get_current_user,
     AccessTokenFromCookie,
 )
-from .schemas import UserCreateModel, UserModel, UserLoginModel
+from .schemas import UserCreateModel, UserLoginModel, UserResponseModel
 from .service import UserService
 from .util import (
     create_access_token,
     create_refresh_token,
     verify_password,
-    encode_token,
 )
 from src.db.main import get_session
 from src.config import Config
@@ -25,7 +23,7 @@ auth_router = APIRouter()
 
 
 @auth_router.post(
-    "/signup", response_model=UserModel, status_code=status.HTTP_201_CREATED
+    "/register", response_model=UserResponseModel, status_code=status.HTTP_201_CREATED
 )
 async def create_user(
     response: Response,
@@ -52,7 +50,7 @@ async def create_user(
     return new_user
 
 
-@auth_router.post("/login")
+@auth_router.post("/login", response_model=UserResponseModel)
 async def login(
     response: Response,
     login_data: UserLoginModel,
@@ -87,7 +85,8 @@ async def update_tokens(
     redis_client: RedisClient = Depends(get_redis_client),
     session: AsyncSession = Depends(get_session),
 ):
-    user_id = token_details["id"]
+    user_id = token_details["user"]["id"]
+
     user = await user_service.get_user_by_id(user_id, session)
 
     if not user:
@@ -106,6 +105,11 @@ async def update_tokens(
     return {"Okay": "👍"}
 
 
+@auth_router.get("/me")
+async def get_current_user(token_data=Depends(AccessTokenFromCookie())):
+    return token_data
+
+
 @auth_router.get("/logout")
 async def revoke_token(
     response: Response,
@@ -116,17 +120,14 @@ async def revoke_token(
     redis_client.add_jti_to_blocklist(refresh_token_details["jti"])
     redis_client.add_jti_to_blocklist(access_token_details["jti"])
 
-    response.delete_cookie(key="access_token")
-    response.delete_cookie(key="refresh_token")
-
-    return JSONResponse(
+    response = JSONResponse(
         content={"message": "logged out successfully"}, status_code=status.HTTP_200_OK
     )
 
+    response.delete_cookie(key="access_token")
+    response.delete_cookie(key="refresh_token")
 
-@auth_router.get("/me")
-async def get_current_user(user=Depends(AccessTokenFromCookie())):
-    return user
+    return response
 
 
 def generate_tokens_for_user(user) -> (str, str):
