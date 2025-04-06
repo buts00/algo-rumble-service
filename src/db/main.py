@@ -7,7 +7,6 @@ from typing import AsyncGenerator
 from src.config import Config
 
 
-
 async_engine = create_async_engine(url=Config.ALGO_RUMBLE_DB_URL)
 judge0_async_engine = create_async_engine(url=Config.JUDGE0_DB_URL)
 

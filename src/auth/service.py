@@ -43,7 +43,7 @@ class UserService:
 
     @staticmethod
     async def update_refresh_token(
-            user_id: UUID4, refresh_token: str, session: AsyncSession
+        user_id: UUID4, refresh_token: str, session: AsyncSession
     ):
         stmt = (
             update(User)

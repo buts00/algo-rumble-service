@@ -13,7 +13,7 @@ class TokenFromCookie(ABC):
         self.cookie_name = cookie_name
 
     async def __call__(
-            self, request: Request, redis_client: RedisClient = Depends(get_redis_client)
+        self, request: Request, redis_client: RedisClient = Depends(get_redis_client)
     ) -> dict:
         token = request.cookies.get(self.cookie_name)
 
@@ -40,8 +40,7 @@ class TokenFromCookie(ABC):
         return token_data
 
     @abstractmethod
-    def verify_token_data(self, token_data: dict):
-        ...
+    def verify_token_data(self, token_data: dict): ...
 
 
 class AccessTokenFromCookie(TokenFromCookie):

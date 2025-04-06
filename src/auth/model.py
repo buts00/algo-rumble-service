@@ -21,7 +21,7 @@ class User(BaseModel, table=True):
     rating: int = Field(default=200, sa_column=Column(pg_INTEGER, default=0))
     country_code: str = Field(sa_column=Column(String(5)))
     refresh_token: str = Field(
-        sa_column=Column(String(255), nullable=True, default=None)
+        sa_column=Column(String(500), nullable=True, default=None)
     )
 
     def __repr__(self):

@@ -2,10 +2,20 @@ from fastapi import APIRouter, Depends, status, HTTPException, Response
 from sqlalchemy.ext.asyncio.session import AsyncSession
 from starlette.responses import JSONResponse
 
-from .dependency import get_user_service, RefreshTokenFromCookie, get_current_user, AccessTokenFromCookie
+from .dependency import (
+    get_user_service,
+    RefreshTokenFromCookie,
+    get_current_user,
+    AccessTokenFromCookie,
+)
 from .schemas import UserCreateModel, UserModel, UserLoginModel
 from .service import UserService
-from .util import create_access_token, create_refresh_token, verify_password, encode_token
+from .util import (
+    create_access_token,
+    create_refresh_token,
+    verify_password,
+    encode_token,
+)
 from src.db.main import get_session
 from src.config import Config
 from ..db.dependency import get_redis_client
@@ -18,10 +28,10 @@ auth_router = APIRouter()
     "/signup", response_model=UserModel, status_code=status.HTTP_201_CREATED
 )
 async def create_user(
-        response: Response,
-        user_data: UserCreateModel,
-        user_service: UserService = Depends(get_user_service),
-        session: AsyncSession = Depends(get_session),
+    response: Response,
+    user_data: UserCreateModel,
+    user_service: UserService = Depends(get_user_service),
+    session: AsyncSession = Depends(get_session),
 ):
     user_exists = await user_service.get_user_by_username(user_data.username, session)
 
@@ -39,15 +49,15 @@ async def create_user(
 
     set_auth_cookies(response, access_token, refresh_token)
 
-    return {"user": new_user}
+    return new_user
 
 
 @auth_router.post("/login")
 async def login(
-        response: Response,
-        login_data: UserLoginModel,
-        user_service: UserService = Depends(get_user_service),
-        session: AsyncSession = Depends(get_session),
+    response: Response,
+    login_data: UserLoginModel,
+    user_service: UserService = Depends(get_user_service),
+    session: AsyncSession = Depends(get_session),
 ):
     user = await user_service.get_user_by_username(login_data.username, session)
     if not user:
@@ -66,16 +76,16 @@ async def login(
 
     set_auth_cookies(response, access_token, refresh_token)
 
-    return {"user": user}
+    return user
 
 
 @auth_router.get("/refresh-token")
 async def update_tokens(
-        response: Response,
-        token_details: dict = Depends(RefreshTokenFromCookie()),
-        user_service: UserService = Depends(get_user_service),
-        redis_client: RedisClient = Depends(get_redis_client),
-        session: AsyncSession = Depends(get_session),
+    response: Response,
+    token_details: dict = Depends(RefreshTokenFromCookie()),
+    user_service: UserService = Depends(get_user_service),
+    redis_client: RedisClient = Depends(get_redis_client),
+    session: AsyncSession = Depends(get_session),
 ):
     user_id = token_details["id"]
     user = await user_service.get_user_by_id(user_id, session)
@@ -93,16 +103,15 @@ async def update_tokens(
 
     set_auth_cookies(response, access_token, refresh_token)
 
-    return {"Okey": "👍"}
+    return {"Okay": "👍"}
 
 
 @auth_router.get("/logout")
 async def revoke_token(
-        response: Response,
-        refresh_token_details: dict = Depends(RefreshTokenFromCookie()),
-        access_token_details: dict = Depends(AccessTokenFromCookie()),
-
-        redis_client: RedisClient = Depends(get_redis_client),
+    response: Response,
+    refresh_token_details: dict = Depends(RefreshTokenFromCookie()),
+    access_token_details: dict = Depends(AccessTokenFromCookie()),
+    redis_client: RedisClient = Depends(get_redis_client),
 ):
     redis_client.add_jti_to_blocklist(refresh_token_details["jti"])
     redis_client.add_jti_to_blocklist(access_token_details["jti"])
@@ -116,21 +125,25 @@ async def revoke_token(
 
 
 @auth_router.get("/me")
-async def get_current_user(user=Depends(get_current_user)):
+async def get_current_user(user=Depends(AccessTokenFromCookie())):
     return user
 
 
 def generate_tokens_for_user(user) -> (str, str):
-    access_token = create_access_token({
-        "id": str(user.id),
-        "username": user.username,
-        "role": user.role,
-    })
+    access_token = create_access_token(
+        {
+            "id": str(user.id),
+            "username": user.username,
+            "role": user.role,
+        }
+    )
 
-    refresh_token = create_refresh_token({
-        "id": str(user.id),
-        "username": user.username,
-    })
+    refresh_token = create_refresh_token(
+        {
+            "id": str(user.id),
+            "username": user.username,
+        }
+    )
 
     return access_token, refresh_token
 

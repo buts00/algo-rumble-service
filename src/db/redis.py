@@ -9,28 +9,28 @@ class RedisClient:
     def __new__(cls, *args, **kwargs):
         if not cls._instance:
             cls._instance = super(RedisClient, cls).__new__(cls, *args, **kwargs)
-            cls._instance.connect()
         return cls._instance
 
     def __init__(self):
         self.redis = None
         self.JTI_EXPIRY = Config.JWT_ACCESS_TOKEN_EXPIRY
+        self.connect()
 
     def connect(self):
-        try:
-            self.redis = redis.Redis(
-                host=Config.REDIS_HOST,
-                port=Config.REDIS_PORT,
-                db=0,
-                password=Config.REDIS_PASSWORD,
-                decode_responses=True,
-            )
-
-            self.redis.ping()
-        except redis.ConnectionError as e:
-            raise HTTPException(
-                status_code=500, detail=f"Redis connection error: {str(e)}"
-            )
+        if self.redis is None:
+            try:
+                self.redis = redis.Redis(
+                    host=Config.REDIS_HOST,
+                    port=Config.REDIS_PORT,
+                    db=0,
+                    password=Config.REDIS_PASSWORD,
+                    decode_responses=True,
+                )
+                self.redis.ping()
+            except redis.ConnectionError as e:
+                raise HTTPException(
+                    status_code=500, detail=f"Redis connection error: {str(e)}"
+                )
 
     def close(self):
         if self.redis:

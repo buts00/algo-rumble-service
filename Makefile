@@ -1,19 +1,15 @@
 .PHONY: lint test run build up down clean deps
 
-# Лінтер
 lint:
 	ruff check .
 	black .
 
-# Запуск локально (без Docker)
 run:
 	uvicorn src.main:app --reload
 
-# Збірка Docker-образу
 build:
 	docker-compose build
 
-# Запуск через Docker Compose
 up:
 	docker-compose up -d --build
 

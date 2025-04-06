@@ -50,12 +50,12 @@ class Settings(BaseSettings):
     # Computed field for ALGO_RUMBLE_DB_URL
     @property
     def ALGO_RUMBLE_DB_URL(self) -> str:
-        return f"{self.POSTGRES_DRIVER}://{self.POSTGRES_USER}:{self.ALGO_RUMBLE_PASSWORD}@{self.ALGO_RUMBLE_HOST}:{self.ALGO_RUMBLE_PORT}/{self.ALGO_RUMBLE_DB}"
+        return f"{self.POSTGRES_DRIVER}://{self.POSTGRES_USER}:{self.ALGO_RUMBLE_PASSWORD}@{self.ALGO_RUMBLE_HOST}:5432/{self.ALGO_RUMBLE_DB}"
 
     # Computed field for JUDGE0_DB_URL
     @property
     def JUDGE0_DB_URL(self) -> str:
-        return f"{self.POSTGRES_DRIVER}://{self.POSTGRES_USER}:{self.JUDGE0_DB_PASSWORD}@{self.JUDGE0_DB_HOST}:{self.JUDGE0_DB_PORT}/{self.JUDGE0_DB}"
+        return f"{self.POSTGRES_DRIVER}://{self.POSTGRES_USER}:{self.JUDGE0_DB_PASSWORD}@{self.JUDGE0_DB_HOST}:5432/{self.JUDGE0_DB}"
 
 
 Config = Settings()
