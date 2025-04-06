@@ -12,16 +12,18 @@ class UserRole(str, Enum):
 
 class UserBase(BaseModel):
     username: str = Field(..., max_length=50, examples=["algo_champ"])
-    email: EmailStr = Field(..., examples=["user@algorumble.com"])
+    country_code: str = Field(
+        ...,
+        max_length=10,
+        examples=["UA", "US", "GB"],
+        description="ISO 3166-1 alpha-2 country code",
+    )
 
 
 class UserModel(UserBase):
-    uid: uuid.UUID
+    id: uuid.UUID
     role: UserRole
-    rating: float
-    is_verified: bool
-    created_at: datetime
-    updated_at: datetime
+    rating: int
 
     class Config:
         from_attributes = True
@@ -38,5 +40,5 @@ class UserCreateModel(UserBase):
 
 
 class UserLoginModel(BaseModel):
-    email: EmailStr = Field(..., examples=["user@algorumble.com"])
+    username: str = Field(..., max_length=50, examples=["algo_champ"])
     password: str = Field(..., min_length=8, max_length=64)

@@ -1,106 +1,114 @@
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, status, HTTPException, Response
 from sqlalchemy.ext.asyncio.session import AsyncSession
-from fastapi.exceptions import HTTPException
+from starlette.responses import JSONResponse
+
+from .dependency import get_user_service, RefreshTokenFromCookie, get_current_user, AccessTokenFromCookie
 from .schemas import UserCreateModel, UserModel, UserLoginModel
 from .service import UserService
+from .util import create_access_token, create_refresh_token, verify_password, encode_token
 from src.db.main import get_session
-from .util import create_access_token, verify_password
-from datetime import timedelta, datetime
-from fastapi.responses import JSONResponse
-from .dependency import RefreshTokenBearer, AccessTokenBearer, get_current_user
-from src.db.redis import RedisClient
-
-from ..config import Config
+from src.config import Config
+from ..db.dependency import get_redis_client
+from ..db.redis import RedisClient
 
 auth_router = APIRouter()
-user_service = UserService()
-redis_client = RedisClient()
-redis_client.connect()
-JWT_REFRESH_TOKEN_EXPIRY = Config.JWT_REFRESH_TOKEN_EXPIRY
 
 
 @auth_router.post(
     "/signup", response_model=UserModel, status_code=status.HTTP_201_CREATED
 )
-async def create_user_account(
-    user_data: UserCreateModel, session: AsyncSession = Depends(get_session)
+async def create_user(
+        response: Response,
+        user_data: UserCreateModel,
+        user_service: UserService = Depends(get_user_service),
+        session: AsyncSession = Depends(get_session),
 ):
-    email = user_data.email
-
-    user_exists = await user_service.user_exists(email, session)
+    user_exists = await user_service.get_user_by_username(user_data.username, session)
 
     if user_exists:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="user with this email already exists",
+            detail="user with this username already exists",
         )
 
     new_user = await user_service.create_user(user_data, session)
 
-    return new_user
+    access_token, refresh_token = generate_tokens_for_user(new_user)
+
+    await user_service.update_refresh_token(new_user.id, refresh_token, session)
+
+    set_auth_cookies(response, access_token, refresh_token)
+
+    return {"user": new_user}
 
 
 @auth_router.post("/login")
-async def login_users(
-    login_data: UserLoginModel, session: AsyncSession = Depends(get_session)
+async def login(
+        response: Response,
+        login_data: UserLoginModel,
+        user_service: UserService = Depends(get_user_service),
+        session: AsyncSession = Depends(get_session),
 ):
-    email = login_data.email
-    password = login_data.password
-
-    user = await user_service.get_user_by_email(email, session)
-
-    if user is not None:
-        password_valid = verify_password(password, user.password_hash)
-
-        if password_valid:
-            access_token = create_access_token(
-                user_data={
-                    "email": user.email,
-                    "user_uid": str(user.uid),
-                    "role": user.role,
-                }
-            )
-            refresh_token = create_access_token(
-                user_data={
-                    "email": user.email,
-                    "user_uid": str(user.uid),
-                },
-                refresh=True,
-                expiry=timedelta(days=JWT_REFRESH_TOKEN_EXPIRY),
-            )
-
-            return JSONResponse(
-                content={
-                    "message": "login successful",
-                    "access token": access_token,
-                    "refresh_token": refresh_token,
-                    "user": {"email": user.email, "uid": str(user.uid)},
-                }
-            )
-    raise HTTPException(
-        status_code=status.HTTP_403_FORBIDDEN, detail="invalid credentials"
-    )
-
-
-@auth_router.get("/refresh_token")
-async def get_new_access_token(token_details: dict = Depends(RefreshTokenBearer())):
-    expiry_timestamp = token_details["exp"]
-
-    if datetime.fromtimestamp(expiry_timestamp) > datetime.now():
-        new_access_token = create_access_token(user_data=token_details["user"])
-
-        return JSONResponse(content={"access_token": new_access_token})
-    else:
+    user = await user_service.get_user_by_username(login_data.username, session)
+    if not user:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail="invalid or expired token"
+            status_code=status.HTTP_403_FORBIDDEN, detail="Invalid credentials"
         )
+
+    if not verify_password(login_data.password, user.password_hash):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail="Invalid credentials"
+        )
+
+    access_token, refresh_token = generate_tokens_for_user(user)
+
+    await user_service.update_refresh_token(user.id, refresh_token, session)
+
+    set_auth_cookies(response, access_token, refresh_token)
+
+    return {"user": user}
+
+
+@auth_router.get("/refresh-token")
+async def update_tokens(
+        response: Response,
+        token_details: dict = Depends(RefreshTokenFromCookie()),
+        user_service: UserService = Depends(get_user_service),
+        redis_client: RedisClient = Depends(get_redis_client),
+        session: AsyncSession = Depends(get_session),
+):
+    user_id = token_details["id"]
+    user = await user_service.get_user_by_id(user_id, session)
+
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail="Invalid credentials"
+        )
+
+    redis_client.add_jti_to_blocklist(token_details["jti"])
+
+    access_token, refresh_token = generate_tokens_for_user(user)
+
+    await user_service.update_refresh_token(user.id, refresh_token, session)
+
+    set_auth_cookies(response, access_token, refresh_token)
+
+    return {"Okey": "👍"}
 
 
 @auth_router.get("/logout")
-async def revoke_token(token_details: dict = Depends(AccessTokenBearer())):
-    jti = token_details["jti"]
+async def revoke_token(
+        response: Response,
+        refresh_token_details: dict = Depends(RefreshTokenFromCookie()),
+        access_token_details: dict = Depends(AccessTokenFromCookie()),
 
-    redis_client.add_jti_to_blocklist(jti)
+        redis_client: RedisClient = Depends(get_redis_client),
+):
+    redis_client.add_jti_to_blocklist(refresh_token_details["jti"])
+    redis_client.add_jti_to_blocklist(access_token_details["jti"])
+
+    response.delete_cookie(key="access_token")
+    response.delete_cookie(key="refresh_token")
 
     return JSONResponse(
         content={"message": "logged out successfully"}, status_code=status.HTTP_200_OK
@@ -110,3 +118,37 @@ async def revoke_token(token_details: dict = Depends(AccessTokenBearer())):
 @auth_router.get("/me")
 async def get_current_user(user=Depends(get_current_user)):
     return user
+
+
+def generate_tokens_for_user(user) -> (str, str):
+    access_token = create_access_token({
+        "id": str(user.id),
+        "username": user.username,
+        "role": user.role,
+    })
+
+    refresh_token = create_refresh_token({
+        "id": str(user.id),
+        "username": user.username,
+    })
+
+    return access_token, refresh_token
+
+
+def set_auth_cookies(response: Response, access_token: str, refresh_token: str) -> None:
+    response.set_cookie(
+        key="access_token",
+        value=access_token,
+        max_age=Config.JWT_ACCESS_TOKEN_EXPIRY,
+        httponly=True,
+        secure=True,
+        samesite="strict",
+    )
+    response.set_cookie(
+        key="refresh_token",
+        value=refresh_token,
+        max_age=Config.JWT_REFRESH_TOKEN_EXPIRY,
+        httponly=True,
+        secure=True,
+        samesite="strict",
+    )

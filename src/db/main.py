@@ -1,11 +1,14 @@
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
+from sqlalchemy.testing.plugin.plugin_base import config
 from sqlmodel import SQLModel
 from sqlmodel.ext.asyncio.session import AsyncSession
 from typing import AsyncGenerator
 
 from src.config import Config
 
-async_engine = create_async_engine(url=Config.DATABASE_URL)
+
+
+async_engine = create_async_engine(url=Config.ALGO_RUMBLE_DB_URL)
 judge0_async_engine = create_async_engine(url=Config.JUDGE0_DB_URL)
 
 

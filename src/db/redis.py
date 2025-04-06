@@ -4,6 +4,14 @@ from fastapi import HTTPException
 
 
 class RedisClient:
+    _instance = None
+
+    def __new__(cls, *args, **kwargs):
+        if not cls._instance:
+            cls._instance = super(RedisClient, cls).__new__(cls, *args, **kwargs)
+            cls._instance.connect()
+        return cls._instance
+
     def __init__(self):
         self.redis = None
         self.JTI_EXPIRY = Config.JWT_ACCESS_TOKEN_EXPIRY
@@ -38,7 +46,7 @@ class RedisClient:
 
     def token_in_blocklist(self, jti: str) -> bool:
         try:
-            return self.redis.exists(f"jti:{jti}") == 1
+            return self.redis.exists(f"jti:{jti}")
         except redis.RedisError as e:
             raise HTTPException(
                 status_code=500, detail=f"Redis operation failed: {str(e)}"
@@ -46,4 +54,3 @@ class RedisClient:
 
 
 redis_client = RedisClient()
-redis_client.connect()

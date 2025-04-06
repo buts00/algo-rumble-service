@@ -1,21 +1,27 @@
-from pydantic import EmailStr
+from random import randint
 
+from pydantic import UUID4
+from sqlmodel import select, update
 from .model import User
 from sqlmodel.ext.asyncio.session import AsyncSession
-from sqlmodel import select
 from .schemas import UserCreateModel, UserRole
 from .util import generate_password_hash
 
 
 class UserService:
     @staticmethod
-    async def get_user_by_email(email: EmailStr, session: AsyncSession):
-        statement = select(User).where(User.email == email)
+    async def get_user_by_id(id: UUID4, session: AsyncSession):
+        statement = select(User).where(User.id == id)
         result = await session.execute(statement)
+
         return result.scalar_one_or_none()
 
-    async def user_exists(self, email: EmailStr, session: AsyncSession):
-        return await self.get_user_by_email(email, session) is not None
+    @staticmethod
+    async def get_user_by_username(username: str, session: AsyncSession):
+        statement = select(User).where(User.username == username)
+        result = await session.execute(statement)
+
+        return result.scalar_one_or_none()
 
     @staticmethod
     async def create_user(user_data: UserCreateModel, session: AsyncSession):
@@ -26,7 +32,7 @@ class UserService:
             **user_data_dict,
             password_hash=generate_password_hash(password),
             role=UserRole.USER,
-            rating=0.0
+            rating=randint(0, 1000),
         )
 
         session.add(new_user)
@@ -34,3 +40,19 @@ class UserService:
         await session.refresh(new_user)
 
         return new_user
+
+    @staticmethod
+    async def update_refresh_token(
+            user_id: UUID4, refresh_token: str, session: AsyncSession
+    ):
+        stmt = (
+            update(User)
+            .where(User.id == user_id)
+            .values(refresh_token=refresh_token)
+            .execution_options(synchronize_session="fetch")
+        )
+
+        result = await session.execute(stmt)
+        await session.commit()
+
+        return result

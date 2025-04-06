@@ -3,7 +3,7 @@
 # Лінтер
 lint:
 	ruff check .
-	black --check --diff .
+	black .
 
 # Запуск локально (без Docker)
 run:

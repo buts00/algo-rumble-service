@@ -1,91 +1,83 @@
-from fastapi.security import HTTPBearer
-from fastapi import Request
+from abc import abstractmethod, ABC
+
+from fastapi import Request, Depends, HTTPException, status
 from .util import decode_token
 from src.db.redis import RedisClient
 from .service import UserService
-from fastapi import Depends, HTTPException, status
-from fastapi.security import OAuth2PasswordBearer
-from jose import JWTError, jwt
-from src.config import Config
 from src.auth.schemas import UserModel
-
-user_service = UserService()
-redis_client = RedisClient()
-redis_client.connect()
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
+from ..db.dependency import get_redis_client
 
 
-class TokenBearer(HTTPBearer):
-    def __init__(self, auto_error=True):
-        super().__init__(auto_error=auto_error)
+class TokenFromCookie(ABC):
+    def __init__(self, cookie_name: str):
+        self.cookie_name = cookie_name
 
-    async def __call__(self, request: Request) -> dict:
-        creds = await super().__call__(request)
+    async def __call__(
+            self, request: Request, redis_client: RedisClient = Depends(get_redis_client)
+    ) -> dict:
+        token = request.cookies.get(self.cookie_name)
 
-        token = creds.credentials
+        if not token:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail=f"{self.cookie_name} not found in cookies",
+            )
 
         token_data = decode_token(token)
-
-        if not self.token_valid(token):
+        if not token_data:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail={
-                    "error": "this token is invalid or expired",
-                    "resolution": "please get new token",
-                },
+                detail="Invalid or expired token",
             )
 
         if redis_client.token_in_blocklist(token_data["jti"]):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail={
-                    "error": "this token is invalid or has been revoked",
-                    "resolution": "please get new token",
-                },
+                detail="Token is blacklisted",
             )
 
         self.verify_token_data(token_data)
-
         return token_data
 
-    @staticmethod
-    def token_valid(token: str) -> bool:
-        token_data = decode_token(token)
-
-        return token_data is not None
-
-    def verify_token_data(self, token_data):
-        raise NotImplementedError("Please Override this method in child classes")
+    @abstractmethod
+    def verify_token_data(self, token_data: dict):
+        ...
 
 
-class AccessTokenBearer(TokenBearer):
-    def verify_token_data(self, token_data: dict) -> None:
-        if token_data and token_data["refresh"]:
+class AccessTokenFromCookie(TokenFromCookie):
+    def __init__(self):
+        super().__init__("access_token")
+
+    def verify_token_data(self, token_data: dict):
+        if token_data.get("is_refresh"):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="Please provide an access token",
+                detail="Access token required",
             )
 
 
-class RefreshTokenBearer(TokenBearer):
-    def verify_token_data(self, token_data: dict) -> None:
-        if token_data and not token_data["refresh"]:
+class RefreshTokenFromCookie(TokenFromCookie):
+    def __init__(self):
+        super().__init__("refresh_token")
+
+    def verify_token_data(self, token_data: dict):
+        if not token_data.get("is_refresh"):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="Please provide a refresh token",
+                detail="Refresh token required",
             )
 
 
-def get_current_user(token: str = Depends(oauth2_scheme)) -> UserModel:
+def get_current_user(token_data: dict = Depends(AccessTokenFromCookie())) -> UserModel:
     try:
-        payload = jwt.decode(
-            token, Config.JWT_SECRET, algorithms=[Config.JWT_ALGORITHM]
-        )
-        user = UserModel(**payload)
+        user = UserModel(**token_data)
         return user
-    except JWTError:
+    except Exception:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Could not validate credentials",
-            headers={"WWW-Authenticate": "Bearer"},
+            detail="Could not validate user",
         )
+
+
+def get_user_service() -> UserService:
+    return UserService()

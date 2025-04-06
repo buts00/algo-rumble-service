@@ -1,23 +1,36 @@
 services:
   # Your existing services (db, redis, web)
-  db:
+  db_main:
     image: postgres:15.12
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      POSTGRES_DB: ${POSTGRES_DB}
-      JUDGE0_PASSWORD: ${JUDGE0_PASSWORD}
-      POSTGRES_MULTIPLE_DATABASES: "judge0,${POSTGRES_DB}"
+      POSTGRES_PASSWORD: ${ALGO_RUMBLE_PASSWORD}
+      POSTGRES_DB: ${ALGO_RUMBLE_DB}
     ports:
-      - "5435:5432"
+      - ${ALGO_RUMBLE_PORT}:5432
     healthcheck:
       test: [ "CMD", "pg_isready", "-U", "${POSTGRES_USER}" ]
       interval: 10s
       timeout: 5s
       retries: 5
     volumes:
-      - data:/var/lib/postgresql/data/
-      - ./init-db.sh:/docker-entrypoint-initdb.d/init-db.sh
+      - algo_rumble_data:/var/lib/postgresql/data/
+
+  db_judge0:
+    image: postgres:15.12
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${JUDGE0_DB_PASSWORD}
+      POSTGRES_DB: ${JUDGE0_DB}
+    ports:
+      - ${JUDGE0_DB_PORT}:5432
+    healthcheck:
+      test: [ "CMD", "pg_isready", "-U", "${POSTGRES_USER}" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - judge0_data:/var/lib/postgresql/data/
 
   redis:
     image: redis:7.4.2
@@ -25,7 +38,7 @@ services:
     environment:
       - REDIS_PASSWORD=${REDIS_PASSWORD}
     ports:
-      - "6379:6379"
+      - ${REDIS_PORT}:6379
     healthcheck:
       test: [ "CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping" ]
       interval: 10s
@@ -37,30 +50,15 @@ services:
       context: .
       dockerfile: Dockerfile
     ports:
-      - "8000:8000"
-    environment:
-      JWT_SECRET: ${JWT_SECRET}
-      JWT_ALGORITHM: ${JWT_ALGORITHM}
-      JWT_ACCESS_TOKEN_EXPIRY: ${JWT_ACCESS_TOKEN_EXPIRY}
-      JWT_REFRESH_TOKEN_EXPIRY: ${JWT_REFRESH_TOKEN_EXPIRY}
-      API_BASE_URL: ${API_BASE_URL}
-      DATABASE_URL: ${DATABASE_URL}
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      POSTGRES_DB: ${POSTGRES_DB}
-      JUDGE0_DB_URL: ${JUDGE0_DB_URL}
-      JUDGE0_DB: ${JUDGE0_DB}
-      JUDGE0_PASSWORD: ${JUDGE0_PASSWORD}
-      JUDGE0_USER: ${JUDGE0_USER}
-      JUDGE0_AUTH_TOKEN: ${JUDGE0_AUTH_TOKEN}
-      JUDGE0_URL: ${JUDGE0_URL}
-      REDIS_PASSWORD: ${REDIS_PASSWORD}
-      REDIS_HOST: ${REDIS_HOST}
-      REDIS_PORT: ${REDIS_PORT}
+      - ${API_SERVER_PORT}:8000
+    env_file:
+      - .env
     depends_on:
       redis:
         condition: service_healthy
-      db:
+      db_main:
+        condition: service_healthy
+      db_judge0:
         condition: service_healthy
 
   judge0-server:
@@ -69,17 +67,17 @@ services:
     volumes:
       - ./judge0.conf:/judge0.conf:ro
     ports:
-      - "2358:2358"
+      - ${JUDGE0_SERVER_PORT}:2358
     privileged: true
     environment:
-      POSTGRES_HOST: db
+      POSTGRES_HOST: ${JUDGE0_DB_HOST}
       POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      POSTGRES_DB: judge0  # Specify judge0 database here
-      REDIS_HOST: redis
+      POSTGRES_PASSWORD: ${JUDGE0_DB_PASSWORD}
+      POSTGRES_DB: ${JUDGE0_DB}
+      REDIS_HOST: ${REDIS_HOST}
       REDIS_PASSWORD: ${REDIS_PASSWORD}
     depends_on:
-      db:
+      db_judge0:
         condition: service_healthy
       redis:
         condition: service_healthy
@@ -90,21 +88,22 @@ services:
     platform: linux/amd64
     volumes:
       - ./judge0.conf:/judge0.conf:ro
-    command: ["./scripts/workers"]
+    command: [ "./scripts/workers" ]
     privileged: true
     environment:
-      POSTGRES_HOST: db
+      POSTGRES_HOST: ${JUDGE0_DB_HOST}
       POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_PASSWORD: ${JUDGE0_DB_PASSWORD}
       POSTGRES_DB: ${JUDGE0_DB}
-      REDIS_HOST: redis
+      REDIS_HOST: ${REDIS_HOST}
       REDIS_PASSWORD: ${REDIS_PASSWORD}
     depends_on:
-      db:
+      db_judge0:
         condition: service_healthy
       redis:
         condition: service_healthy
     restart: always
 
 volumes:
-  data:
+  algo_rumble_data:
+  judge0_data:

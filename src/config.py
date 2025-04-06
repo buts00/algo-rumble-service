@@ -1,52 +1,61 @@
-# src/config.py
 import os
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from dotenv import load_dotenv
-
-# The .env file is in the parent directory of "src"
-ENV_PATH = os.path.join(os.path.dirname(__file__), "..", ".env")
-
-# Load the .env so environment variables are set before Pydantic reads them
-load_dotenv(ENV_PATH)
 
 
 class Settings(BaseSettings):
-    # JWT configuration
+    # JWT
     JWT_SECRET: str
     JWT_ALGORITHM: str
-    REDIS_HOST: str
-    REDIS_PORT: int
-    REDIS_PASSWORD: str
-    JWT_ACCESS_TOKEN_EXPIRY: int = 3600
-    JWT_REFRESH_TOKEN_EXPIRY: int = 2592000
+    JWT_ACCESS_TOKEN_EXPIRY = int(os.getenv("JWT_ACCESS_TOKEN_EXPIRY"))
+    JWT_REFRESH_TOKEN_EXPIRY = int(os.getenv("JWT_REFRESH_TOKEN_EXPIRY"))
 
-    # API & Database configuration
+    # API SERVER
+    API_SERVER_PORT: str = int(os.getenv("API_SERVER_PORT"))
+    API_SERVER_HOST: str
     API_BASE_URL: str
-    DATABASE_URL: str
-    POSTGRES_USER: str
-    POSTGRES_PASSWORD: str
-    POSTGRES_DB: str
 
-    # Judge0 Database configuration
-    JUDGE0_DB_URL: str
+    # Main DB (Algo Rumble)
+    POSTGRES_DRIVER: str
+    POSTGRES_USER: str
+    ALGO_RUMBLE_DB: str
+    ALGO_RUMBLE_PASSWORD: str
+    ALGO_RUMBLE_PORT = int(os.getenv("ALGO_RUMBLE_PORT"))
+    ALGO_RUMBLE_HOST: str
+
+    # Judge0 DB
     JUDGE0_DB: str
-    JUDGE0_PASSWORD: str
-    JUDGE0_USER: str
+    JUDGE0_DB_PASSWORD: str
+    JUDGE0_DB_PORT = int(os.getenv("JUDGE0_DB_PORT"))
+    JUDGE0_DB_HOST: str
+
+    # Judge0 server
     JUDGE0_AUTH_TOKEN: str
     JUDGE0_URL: str
+    JUDGE0_SERVER_PORT = int(os.getenv("JUDGE0_SERVER_PORT"))
 
-    # Redis configuration
+    # Redis
     REDIS_HOST: str
-    REDIS_PORT: int = 6379
+    REDIS_PORT = int(os.getenv("REDIS_PORT"))
     REDIS_PASSWORD: str
 
-    # Pydantic Settings Config
     model_config = SettingsConfigDict(
-        # Instructs Pydantic to look for .env in the parent directory of "src"
-        env_file=ENV_PATH,
+        env_file=".env",
         env_file_encoding="utf-8",
         extra="ignore",
+        strict=True,
+        ignored_types=(int, float, bool, str),
     )
+
+    # Computed field for ALGO_RUMBLE_DB_URL
+    @property
+    def ALGO_RUMBLE_DB_URL(self) -> str:
+        return f"{self.POSTGRES_DRIVER}://{self.POSTGRES_USER}:{self.ALGO_RUMBLE_PASSWORD}@{self.ALGO_RUMBLE_HOST}:{self.ALGO_RUMBLE_PORT}/{self.ALGO_RUMBLE_DB}"
+
+    # Computed field for JUDGE0_DB_URL
+    @property
+    def JUDGE0_DB_URL(self) -> str:
+        return f"{self.POSTGRES_DRIVER}://{self.POSTGRES_USER}:{self.JUDGE0_DB_PASSWORD}@{self.JUDGE0_DB_HOST}:{self.JUDGE0_DB_PORT}/{self.JUDGE0_DB}"
 
 
 Config = Settings()
