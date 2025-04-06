@@ -1,24 +1,23 @@
-.PHONY: lint test run build up down clean deps
+.PHONY: lint test run build up down clean deps nuke
 
-# Лінтер
 lint:
 	ruff check .
-	black --check --diff .
+	black .
 
-# Запуск локально (без Docker)
 run:
 	uvicorn src.main:app --reload
 
-# Збірка Docker-образу
 build:
 	docker-compose build
 
-# Запуск через Docker Compose
 up:
 	docker-compose up -d --build
 
 down:
 	docker-compose down -v
+
+nuke:
+	docker-compose down --remove-orphans
 
 open_db:
 	docker exec -it algo-rumble-service-db-1 psql -U postgres

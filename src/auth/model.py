@@ -1,37 +1,28 @@
-from sqlmodel import SQLModel, Field, Column, String, Enum
-import sqlalchemy.dialects.postgresql as pg
-from datetime import datetime
-import uuid
-from enum import Enum as PythonEnum
+from sqlmodel import Field
+from sqlalchemy import Column, String, Enum
+from sqlalchemy.dialects.postgresql import INTEGER as pg_INTEGER
+from enum import Enum as PyEnum
+
+from src.db.model import BaseModel
 
 
-class UserRole(str, PythonEnum):
+class UserRole(str, PyEnum):
     USER = "user"
     ADMIN = "admin"
     MODERATOR = "moderator"
 
 
-class User(SQLModel, table=True):
+class User(BaseModel, table=True):
     __tablename__ = "users"
 
-    uid: uuid.UUID = Field(
-        sa_column=Column(
-            pg.UUID,
-            nullable=False,
-            primary_key=True,
-            default=uuid.uuid4,
-        )
-    )
     username: str = Field(sa_column=Column(String(50), unique=True))
     password_hash: str = Field(exclude=True)
-    email: str = Field(sa_column=Column(String(100), unique=True))
     role: UserRole = Field(sa_column=Column(Enum(UserRole), default=UserRole.USER))
-    rating: float = Field(
-        default=0.0, sa_column=Column(pg.DOUBLE_PRECISION, default=0.0)
+    rating: int = Field(default=200, sa_column=Column(pg_INTEGER, default=0))
+    country_code: str = Field(sa_column=Column(String(5)))
+    refresh_token: str = Field(
+        sa_column=Column(String(500), nullable=True, default=None)
     )
-    is_verified: bool = Field(default=False)
-    created_at: datetime = Field(sa_column=Column(pg.TIMESTAMP, default=datetime.now))
-    updated_at: datetime = Field(sa_column=Column(pg.TIMESTAMP, default=datetime.now))
 
     def __repr__(self):
         return f"<User {self.username} (Rating: {self.rating})>"

@@ -6,7 +6,7 @@ from src.db.main import init_db
 
 
 @asynccontextmanager
-async def life_span(app: FastAPI):
+async def life_span(_app: FastAPI):
     print("Server is starting...")
     await init_db()
     yield
