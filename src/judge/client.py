@@ -13,11 +13,11 @@ class Judge0Client:
         self.headers = {"X-Auth-Token": auth_token}
 
     def submit_code(
-            self,
-            source_code: str,
-            language_id: int = 71,
-            stdin: Optional[str] = "",
-            redirect_stderr_to_stdout: bool = True,
+        self,
+        source_code: str,
+        language_id: int,
+        stdin: Optional[str] = "",
+        redirect_stderr_to_stdout: bool = True,
     ) -> Optional[str]:
         try:
             payload = {
