@@ -5,12 +5,11 @@ from typing import Optional
 
 
 class SubmissionRequest(BaseModel):
-    user_id: uuid.UUID
-    problem_id: int
     source_code: str
     language_id: int
     stdin: Optional[str] = ""
     expected_output: Optional[str] = ""
+    redirect_stderr_to_stdout: bool = True
 
 
 class SubmissionResponse(BaseModel):

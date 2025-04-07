@@ -1,12 +1,12 @@
 import uuid
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio.session import AsyncSession
 from sqlalchemy.exc import SQLAlchemyError
 from src.judge.model import UserSubmission
 from fastapi import HTTPException, status
 
 
 async def save_submission_to_db(
-    session: Session,
+    session: AsyncSession,
     user_id: uuid.UUID,
     submission_token: str,
     problem_id: uuid.UUID | None = None,
@@ -17,12 +17,12 @@ async def save_submission_to_db(
         )
 
         session.add(submission)
-        session.commit()
-        session.refresh(submission)
+        await session.commit()
+        await session.refresh(submission)
 
         return submission
     except SQLAlchemyError as e:
-        session.rollback()
+        await session.rollback()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Error saving submission to the database",

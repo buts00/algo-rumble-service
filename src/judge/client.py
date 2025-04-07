@@ -12,12 +12,25 @@ class Judge0Client:
         self.base_url = base_url
         self.headers = {"X-Auth-Token": auth_token}
 
-    def submit_code(self, source_code: str, language_id: int = 71) -> Optional[str]:
+    def submit_code(
+            self,
+            source_code: str,
+            language_id: int = 71,
+            stdin: Optional[str] = "",
+            redirect_stderr_to_stdout: bool = True,
+    ) -> Optional[str]:
         try:
+            payload = {
+                "source_code": source_code,
+                "language_id": language_id,
+                "stdin": stdin,
+                "redirect_stderr_to_stdout": redirect_stderr_to_stdout,
+            }
+
             response = requests.post(
                 f"{self.base_url}/submissions",
                 headers=self.headers,
-                json={"source_code": source_code, "language_id": language_id},
+                json=payload,
                 timeout=10,
             )
             response.raise_for_status()

@@ -4,7 +4,7 @@ from fastapi import Request, Depends, HTTPException, status
 from .util import decode_token
 from src.db.redis import RedisClient
 from .service import UserService
-from src.auth.schemas import UserModel
+from src.auth.schemas import TokenUser, UserResponseModel
 from ..db.dependency import get_redis_client
 
 
@@ -67,16 +67,18 @@ class RefreshTokenFromCookie(TokenFromCookie):
             )
 
 
-def get_current_user(token_data: dict = Depends(AccessTokenFromCookie())) -> UserModel:
+def get_current_user(token_data: dict = Depends(AccessTokenFromCookie())) -> TokenUser:
     try:
-        user = UserModel(**token_data)
+        # Додамо логування для дебагу
+        print("Token data:", token_data)
+        user = TokenUser(**token_data["user"])
         return user
-    except Exception:
+    except Exception as e:
+        print("Error while creating UserResponseModel:", e)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Could not validate user",
         )
-
 
 def get_user_service() -> UserService:
     return UserService()

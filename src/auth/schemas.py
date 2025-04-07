@@ -52,3 +52,8 @@ class UserCreateModel(UserBase):
 class UserLoginModel(BaseModel):
     username: str = Field(..., max_length=50, examples=["algo_champ"])
     password: str = Field(..., min_length=8, max_length=64)
+
+class TokenUser(BaseModel):
+    id: uuid.UUID
+    username: str
+    role: UserRole

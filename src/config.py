@@ -13,7 +13,6 @@ class Settings(BaseSettings):
     # API SERVER
     API_SERVER_PORT: str = int(os.getenv("API_SERVER_PORT"))
     API_SERVER_HOST: str
-    API_BASE_URL: str
 
     # Main DB (Algo Rumble)
     POSTGRES_DRIVER: str
@@ -31,9 +30,8 @@ class Settings(BaseSettings):
 
     # Judge0 server
     JUDGE0_AUTH_TOKEN: str
-    JUDGE0_URL: str
     JUDGE0_SERVER_PORT = int(os.getenv("JUDGE0_SERVER_PORT"))
-
+    JUDGE0_SERVER_HOST: str
     # Redis
     REDIS_HOST: str
     REDIS_PORT = int(os.getenv("REDIS_PORT"))
@@ -56,6 +54,14 @@ class Settings(BaseSettings):
     @property
     def JUDGE0_DB_URL(self) -> str:
         return f"{self.POSTGRES_DRIVER}://{self.POSTGRES_USER}:{self.JUDGE0_DB_PASSWORD}@{self.JUDGE0_DB_HOST}:5432/{self.JUDGE0_DB}"
+
+    @property
+    def API_BASE_URL(self) -> str:
+        return f"http://{self.API_SERVER_HOST}:{self.API_SERVER_PORT}"
+
+    @property
+    def JUDGE0_URL(self) -> str:
+        return f"http://{self.JUDGE0_SERVER_HOST}:{self.JUDGE0_SERVER_PORT}"
 
 
 Config = Settings()
