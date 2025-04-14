@@ -1,36 +1,34 @@
-# Targets
-.PHONY: lint test run build up down clean deps
+.PHONY: lint test run build up down clean deps nuke
 
-# Лінтер
 lint:
 	ruff check .
-	black --check --diff .
+	black .
 
-# Запуск локально (без Docker)
 run:
-	uvicorn backend.src.main:app --reload
+	uvicorn src.main:app --reload
 
-# Збірка Docker-образу
 build:
 	docker-compose build
 
-# Запуск через Docker Compose
 up:
-	docker-compose up -- build
+	docker-compose up -d --build
 
-# Зупинка контейнерів
 down:
-	docker-compose down
+	docker-compose down -v
 
-# Очистка кешу та тимчасових файлів
+nuke:
+	docker-compose down --remove-orphans
+
+open_db:
+	docker exec -it algo-rumble-service-db-1 psql -U postgres
+
 clean:
 	find . -type d -name "__pycache__" -exec rm -rf {} +
 	find . -type d -name ".pytest_cache" -exec rm -rf {} +
 
-# Встановлення залежностей
-deps:
-	pip install -r system/requirements.txt
 
-# Міграції БД (якщо буде потрібно)
+deps:
+	pip install -r requirements.txt
+
 migrate:
 	alembic upgrade head

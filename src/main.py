@@ -1,11 +1,11 @@
 from fastapi import FastAPI
-from backend.src.auth.routes import auth_router
+from src.auth.route import auth_router
 from contextlib import asynccontextmanager
-from backend.src.db.main import init_db
+from src.db.main import init_db
 
 
 @asynccontextmanager
-async def life_span(app: FastAPI):
+async def life_span(_app: FastAPI):
     print("Server is starting...")
     await init_db()
     yield
