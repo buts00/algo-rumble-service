@@ -28,17 +28,6 @@ class UserModel(UserBase):
         from_attributes = True
 
 
-class UserResponseModel(BaseModel):
-    id: uuid.UUID
-    username: str
-    role: UserRole
-    rating: int
-    country_code: str
-
-    class Config:
-        from_attributes = True
-
-
 class UserCreateModel(UserBase):
     password: str = Field(
         ...,
@@ -52,3 +41,20 @@ class UserCreateModel(UserBase):
 class UserLoginModel(BaseModel):
     username: str = Field(..., max_length=50, examples=["algo_champ"])
     password: str = Field(..., min_length=8, max_length=64)
+
+
+class UserBaseResponse(BaseModel):
+    id: uuid.UUID
+    username: str
+    role: UserRole
+
+    class Config:
+        from_attributes = True
+
+
+class UserResponseModel(UserBaseResponse):
+    rating: int
+    country_code: str
+
+    class Config:
+        from_attributes = True

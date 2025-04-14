@@ -13,7 +13,6 @@ class Settings(BaseSettings):
     # API SERVER
     API_SERVER_PORT: str = int(os.getenv("API_SERVER_PORT"))
     API_SERVER_HOST: str
-    API_BASE_URL: str
 
     # Main DB (Algo Rumble)
     POSTGRES_DRIVER: str
@@ -22,17 +21,6 @@ class Settings(BaseSettings):
     ALGO_RUMBLE_PASSWORD: str
     ALGO_RUMBLE_PORT = int(os.getenv("ALGO_RUMBLE_PORT"))
     ALGO_RUMBLE_HOST: str
-
-    # Judge0 DB
-    JUDGE0_DB: str
-    JUDGE0_DB_PASSWORD: str
-    JUDGE0_DB_PORT = int(os.getenv("JUDGE0_DB_PORT"))
-    JUDGE0_DB_HOST: str
-
-    # Judge0 server
-    JUDGE0_AUTH_TOKEN: str
-    JUDGE0_URL: str
-    JUDGE0_SERVER_PORT = int(os.getenv("JUDGE0_SERVER_PORT"))
 
     # Redis
     REDIS_HOST: str
@@ -52,10 +40,9 @@ class Settings(BaseSettings):
     def ALGO_RUMBLE_DB_URL(self) -> str:
         return f"{self.POSTGRES_DRIVER}://{self.POSTGRES_USER}:{self.ALGO_RUMBLE_PASSWORD}@{self.ALGO_RUMBLE_HOST}:5432/{self.ALGO_RUMBLE_DB}"
 
-    # Computed field for JUDGE0_DB_URL
     @property
-    def JUDGE0_DB_URL(self) -> str:
-        return f"{self.POSTGRES_DRIVER}://{self.POSTGRES_USER}:{self.JUDGE0_DB_PASSWORD}@{self.JUDGE0_DB_HOST}:5432/{self.JUDGE0_DB}"
+    def API_BASE_URL(self) -> str:
+        return f"http://{self.API_SERVER_HOST}:{self.API_SERVER_PORT}"
 
 
 Config = Settings()
