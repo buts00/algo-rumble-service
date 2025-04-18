@@ -1,5 +1,3 @@
-import os
-
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -7,11 +5,11 @@ class Settings(BaseSettings):
     # JWT
     JWT_SECRET: str
     JWT_ALGORITHM: str
-    JWT_ACCESS_TOKEN_EXPIRY = int(os.getenv("JWT_ACCESS_TOKEN_EXPIRY"))
-    JWT_REFRESH_TOKEN_EXPIRY = int(os.getenv("JWT_REFRESH_TOKEN_EXPIRY"))
+    JWT_ACCESS_TOKEN_EXPIRY: int
+    JWT_REFRESH_TOKEN_EXPIRY: int
 
     # API SERVER
-    API_SERVER_PORT: str = int(os.getenv("API_SERVER_PORT"))
+    API_SERVER_PORT: int
     API_SERVER_HOST: str
 
     # Main DB (Algo Rumble)
@@ -19,19 +17,24 @@ class Settings(BaseSettings):
     POSTGRES_USER: str
     ALGO_RUMBLE_DB: str
     ALGO_RUMBLE_PASSWORD: str
-    ALGO_RUMBLE_PORT = int(os.getenv("ALGO_RUMBLE_PORT"))
+    ALGO_RUMBLE_PORT: int
     ALGO_RUMBLE_HOST: str
 
     # Redis
     REDIS_HOST: str
-    REDIS_PORT = int(os.getenv("REDIS_PORT"))
+    REDIS_PORT: int
     REDIS_PASSWORD: str
+
+    # Kafka
+    KAFKA_HOST: str
+    KAFKA_PORT: int
+    PLAYER_QUEUE_TOPIC: str
+    MATCH_EVENTS_TOPIC: str
 
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
         extra="ignore",
-        strict=True,
         ignored_types=(int, float, bool, str),
     )
 
