@@ -2,8 +2,28 @@
 **/.venv
 **/.git
 **/.vscode
+**/.idea
 **/*.log
 **/*.pyc
 **/*.pyo
 **/*.pyd
 .DS_Store
+
+# Test files
+tests/
+test_*.py
+test.db
+.coverage
+htmlcov/
+pytest.ini
+
+# Documentation and development files
+*.md
+!README.md
+Makefile
+.env.example
+.gitignore
+.dockerignore
+
+# Other
+logs/

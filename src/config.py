@@ -1,3 +1,7 @@
+import logging
+from logging.config import dictConfig
+from pathlib import Path
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -31,6 +35,10 @@ class Settings(BaseSettings):
     PLAYER_QUEUE_TOPIC: str
     MATCH_EVENTS_TOPIC: str
 
+    # Logging
+    LOG_LEVEL: str = "INFO"
+    LOG_FILE: str = "logs/app.log"
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
@@ -49,3 +57,70 @@ class Settings(BaseSettings):
 
 
 Config = Settings()
+
+# Ensure logs directory exists
+log_dir = Path("logs")
+log_dir.mkdir(exist_ok=True)
+
+
+def configure_logging():
+    """Configure logging for the application."""
+    log_config = {
+        "version": 1,
+        "disable_existing_loggers": False,
+        "formatters": {
+            "default": {
+                "format": "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+            },
+            "detailed": {
+                "format": "%(asctime)s - %(name)s - %(levelname)s - %(module)s - %(funcName)s - %(lineno)d - %(message)s",
+            },
+        },
+        "handlers": {
+            "console": {
+                "class": "logging.StreamHandler",
+                "formatter": "default",
+                "level": Config.LOG_LEVEL,
+            },
+            "file": {
+                "class": "logging.handlers.RotatingFileHandler",
+                "formatter": "detailed",
+                "filename": Config.LOG_FILE,
+                "maxBytes": 10485760,  # 10MB
+                "backupCount": 5,
+                "level": Config.LOG_LEVEL,
+            },
+        },
+        "loggers": {
+            "app": {
+                "handlers": ["console", "file"],
+                "level": Config.LOG_LEVEL,
+                "propagate": False,
+            },
+            "auth": {
+                "handlers": ["console", "file"],
+                "level": Config.LOG_LEVEL,
+                "propagate": False,
+            },
+            "match": {
+                "handlers": ["console", "file"],
+                "level": Config.LOG_LEVEL,
+                "propagate": False,
+            },
+            "db": {
+                "handlers": ["console", "file"],
+                "level": Config.LOG_LEVEL,
+                "propagate": False,
+            },
+        },
+        "root": {
+            "handlers": ["console", "file"],
+            "level": Config.LOG_LEVEL,
+        },
+    }
+    dictConfig(log_config)
+    return logging.getLogger("app")
+
+
+# Initialize logger
+logger = configure_logging()

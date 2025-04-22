@@ -1,10 +1,13 @@
+import uuid
 from datetime import datetime
 from enum import Enum
 
-from sqlalchemy import Column, Integer,DateTime, Enum as SQLEnum
-from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy import Column, DateTime
+from sqlalchemy import Enum as SQLEnum
+from sqlalchemy import Integer
+from sqlmodel import Field, SQLModel
 
-Base = declarative_base()
+from src.db.model import UUID_TYPE
 
 
 class MatchStatus(str, Enum):
@@ -16,14 +19,22 @@ class MatchStatus(str, Enum):
     CANCELLED = "cancelled"
 
 
-class Match(Base):
+class Match(SQLModel, table=True):
     __tablename__ = "matches"
 
-    id = Column(Integer, primary_key=True, index=True)
-    player1_id = Column(Integer, nullable=False)
-    player2_id = Column(Integer, nullable=False)
-    winner_id = Column(Integer, nullable=True)
-    problem_id = Column(Integer, nullable=True)
-    status = Column(SQLEnum(MatchStatus), nullable=False, default=MatchStatus.CREATED)
-    start_time = Column(DateTime, default=datetime.utcnow, nullable=False)
-    end_time = Column(DateTime, nullable=True)
+    id: int = Field(primary_key=True, index=True)
+    player1_id: uuid.UUID = Field(sa_column=Column(UUID_TYPE, nullable=False))
+    player2_id: uuid.UUID = Field(sa_column=Column(UUID_TYPE, nullable=False))
+    winner_id: uuid.UUID = Field(sa_column=Column(UUID_TYPE, nullable=True))
+    problem_id: int = Field(sa_column=Column(Integer, nullable=True))
+    status: MatchStatus = Field(
+        sa_column=Column(
+            SQLEnum(MatchStatus), nullable=False, default=MatchStatus.CREATED
+        )
+    )
+    start_time: datetime = Field(
+        sa_column=Column(DateTime, default=datetime.utcnow, nullable=False)
+    )
+    end_time: datetime = Field(sa_column=Column(DateTime, nullable=True))
+    created_at: datetime = Field(default_factory=datetime.now)
+    updated_at: datetime = Field(default_factory=datetime.now)

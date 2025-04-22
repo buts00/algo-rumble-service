@@ -54,3 +54,9 @@ migrations/
 # Other
 *.pyo
 *.pyd
+
+# Project specific
+CODE_IMPROVEMENTS.md
+test.db
+htmlcov/
+.coverage

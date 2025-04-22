@@ -1,15 +1,21 @@
-from datetime import timedelta, datetime
-from typing import Any
-from src.config import Config
-from passlib.context import CryptContext
-import jwt
 import uuid
+from datetime import datetime, timedelta
+from typing import Any
+
+import jwt
+from passlib.context import CryptContext
+
+from src.config import Config
 
 passwd_context = CryptContext(schemes=["bcrypt"])
 
 
 def generate_password_hash(password: str) -> str:
     return passwd_context.hash(password)
+
+
+# Alias for generate_password_hash to maintain compatibility with tests
+get_password_hash = generate_password_hash
 
 
 def verify_password(password: str, password_hash: str) -> bool:

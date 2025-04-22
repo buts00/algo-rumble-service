@@ -5,12 +5,12 @@ import subprocess
 from datetime import datetime, timedelta
 from typing import List, Optional
 
-from aiokafka import AIOKafkaProducer, AIOKafkaConsumer
+from aiokafka import AIOKafkaConsumer, AIOKafkaProducer
 from sqlalchemy.orm import Session
 
 from src.config import Config
 from src.match.models.match import Match, MatchStatus
-from src.match.schemas.queue import PlayerQueueEntry, MatchQueueResult
+from src.match.schemas.queue import MatchQueueResult, PlayerQueueEntry
 from src.match.websocket import manager
 
 logger = logging.getLogger(__name__)
