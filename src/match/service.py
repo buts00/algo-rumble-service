@@ -3,14 +3,18 @@ import logging
 import os
 import subprocess
 from datetime import datetime, timedelta
-from typing import List, Optional
+from typing import List, Optional, Union
+from uuid import UUID
 
 from aiokafka import AIOKafkaConsumer, AIOKafkaProducer
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 
 from src.config import Config
 from src.match.models.match import Match, MatchStatus
+from src.match.models.problem import Problem
 from src.match.schemas.queue import MatchQueueResult, PlayerQueueEntry
+from src.match.schemas.problem import ProblemSelectionParams
 from src.match.websocket import manager
 
 logger = logging.getLogger(__name__)
@@ -28,303 +32,336 @@ def create_kafka_topics():
     This is called when the consumer starts, instead of at container startup.
     """
     try:
-        # Get topic configuration from environment variables
         topics_config = os.environ.get(
             "KAFKA_CREATE_TOPICS", "player_queue:3:1,match_events:3:1"
         )
-
-        # Parse topic configuration
         topics = topics_config.split(",")
-
         for topic_config in topics:
             parts = topic_config.split(":")
-            if len(parts) >= 1:
-                topic_name = parts[0]
-                partitions = parts[1] if len(parts) >= 2 else "1"
-                replication = parts[2] if len(parts) >= 3 else "1"
+            topic_name = parts[0]
+            partitions = parts[1] if len(parts) >= 2 else "1"
+            replication = parts[2] if len(parts) >= 3 else "1"
 
-                # Create topic using kafka-topics.sh
-                cmd = [
-                    "/opt/bitnami/kafka/bin/kafka-topics.sh",
-                    "--create",
-                    "--if-not-exists",
-                    "--bootstrap-server",
-                    f"{Config.KAFKA_HOST}:{Config.KAFKA_PORT}",
-                    "--topic",
-                    topic_name,
-                    "--partitions",
-                    partitions,
-                    "--replication-factor",
-                    replication,
-                ]
-
-                logger.info(f"Creating Kafka topic: {topic_name}")
-                subprocess.run(cmd, check=True)
-                logger.info(f"Kafka topic created: {topic_name}")
-
+            cmd = [
+                "/opt/bitnami/kafka/bin/kafka-topics.sh",
+                "--create",
+                "--if-not-exists",
+                "--bootstrap-server",
+                f"{Config.KAFKA_HOST}:{Config.KAFKA_PORT}",
+                "--topic",
+                topic_name,
+                "--partitions",
+                partitions,
+                "--replication-factor",
+                replication,
+            ]
+            logger.info(f"Creating Kafka topic: {topic_name}")
+            subprocess.run(cmd, check=True)
+            logger.info(f"Kafka topic created: {topic_name}")
     except Exception as e:
-        logger.error(f"Error creating Kafka topics: {str(e)}")
-        # Continue even if topic creation fails, as topics might already exist
+        logger.error(f"Error creating Kafka topics: {e}")
 
 
-async def add_player_to_queue(user_id: int, rating: int) -> MatchQueueResult:
+async def add_player_to_queue(user_id: Union[UUID, int], rating: int) -> MatchQueueResult:
     """
-    Add a player to the match queue using Kafka.
+    Add a player to the match queue using Kafka. Converts UUID and datetime to string for JSON serialization.
     """
+    entry = PlayerQueueEntry(user_id=user_id, rating=rating)
+    # Convert entry to dict and ensure JSON serializable types
+    entry_dict = entry.model_dump()
+    entry_dict["user_id"] = str(entry_dict.get("user_id"))
+    # Convert datetime fields if present
+    if "timestamp" in entry_dict and isinstance(entry_dict["timestamp"], datetime):
+        entry_dict["timestamp"] = entry_dict["timestamp"].isoformat()
+    message = json.dumps(entry_dict).encode("utf-8")
+
     try:
-        # Create a player queue entry
-        entry = PlayerQueueEntry(user_id=user_id, rating=rating)
-
-        # Serialize the entry to JSON
-        message = json.dumps(entry.model_dump()).encode("utf-8")
-
-        # Create a Kafka producer
         producer = AIOKafkaProducer(
             bootstrap_servers=f"{Config.KAFKA_HOST}:{Config.KAFKA_PORT}"
         )
-
-        # Start the producer
         await producer.start()
-
         try:
-            # Send the message to the player queue topic
             await producer.send_and_wait(Config.PLAYER_QUEUE_TOPIC, message)
-
             return MatchQueueResult(
-                success=True, message="Player added to queue successfully"
+                success=True,
+                message="Player added to queue successfully"
             )
         finally:
-            # Stop the producer
             await producer.stop()
-
     except Exception as e:
-        logger.error(f"Error adding player to queue: {str(e)}")
-
-        # Fallback to in-memory queue if Kafka is not available
+        logger.error(f"Error adding player to Kafka queue: {e}")
+        # Fallback to in-memory queue
         player_queue.append(entry)
         logger.info(f"Added player {user_id} to in-memory queue (fallback)")
-
         return MatchQueueResult(
-            success=True, message="Player added to in-memory queue (fallback)"
+            success=True,
+            message="Player added to in-memory queue (fallback)"
         )
 
 
 async def send_match_notification(
-    user_id: int, match_id: int, opponent_id: int, status: str
+    user_id: Union[UUID, int], match_id: int, opponent_id: Union[UUID, int], status: str
 ):
-    """
-    Send a match notification to a user via WebSocket.
-    """
-    message = {
+    # Ensure we use string keys for manager
+    uid = str(user_id)
+    msg = {
         "in_match": True,
         "match_id": match_id,
         "status": status,
-        "opponent_id": opponent_id,
+        "opponent_id": str(opponent_id),
     }
-    await manager.send_match_notification(user_id, message)
+    await manager.send_match_notification(uid, msg)
+
 
 
 async def find_match_for_player(
-    db: Session, user_id: int, rating: int
+    db: AsyncSession, user_id: Union[UUID, int], rating: int
 ) -> Optional[Match]:
-    """
-    Find a match for a player based on rating similarity.
-    This is used by the Kafka consumer to process the queue.
-    Players can only have one active or pending match at a time.
-    """
-    # Check if the player already has an active or pending match
-    existing_match = (
-        db.query(Match)
-        .filter(
-            ((Match.player1_id == user_id) | (Match.player2_id == user_id))
-            & (
-                (Match.status == MatchStatus.PENDING)
-                | (Match.status == MatchStatus.ACTIVE)
-            )
+    # Check existing match
+    stmt = (
+        select(Match)
+        .where(
+            ((Match.player1_id == user_id) | (Match.player2_id == user_id)) &
+            ((Match.status == MatchStatus.PENDING) | (Match.status == MatchStatus.ACTIVE))
         )
-        .first()
+        .limit(1)
     )
-
-    if existing_match:
-        logger.info(
-            f"Player {user_id} already has an active or pending match, skipping"
-        )
+    result = await db.execute(stmt)
+    existing = result.scalars().first()
+    if existing:
+        logger.info(f"Player {user_id} already has an active or pending match")
         return None
 
-    # Find users with similar rating in the queue
-    rating_range = 100  # Configurable rating range
+    # In-memory queue matching using Elo-based rating range
+    # For Elo, players within 400 points have a significant skill difference
+    # (higher rated player has ~90% expected win probability)
+    base_rating_range = 400
 
-    # For in-memory queue
+    # Start with a narrow range and gradually expand if no match is found
+    # This helps ensure fair matches while not making players wait too long
+    potential = []
     if player_queue:
-        # Find potential opponents in the queue
-        potential_opponents = [
-            entry
-            for entry in player_queue
-            if entry.user_id != user_id and abs(entry.rating - rating) <= rating_range
-        ]
+        for current_range in [base_rating_range, base_rating_range * 1.5, base_rating_range * 2]:
+            potential = [e for e in player_queue if e.user_id != user_id and abs(e.rating - rating) <= current_range]
+            if potential:
+                # Sort by rating difference to get the closest match
+                potential.sort(key=lambda x: abs(x.rating - rating))
+                break
 
-        # Sort by rating similarity
-        potential_opponents.sort(key=lambda x: abs(x.rating - rating))
+        # If no match found even with expanded range, use all available players
+        if not potential:
+            potential = [e for e in player_queue if e.user_id != user_id]
+            potential.sort(key=lambda x: abs(x.rating - rating))
 
-        if potential_opponents:
-            # Get the closest rating opponent
-            opponent = potential_opponents[0]
-
-            # Check if the opponent already has an active or pending match
-            opponent_match = (
-                db.query(Match)
-                .filter(
-                    (
-                        (Match.player1_id == opponent.user_id)
-                        | (Match.player2_id == opponent.user_id)
-                    )
-                    & (
-                        (Match.status == MatchStatus.PENDING)
-                        | (Match.status == MatchStatus.ACTIVE)
-                    )
+        if potential:
+            opponent = potential[0]
+            # Check opponent existing match
+            stmt2 = (
+                select(Match)
+                .where(
+                    ((Match.player1_id == opponent.user_id) | (Match.player2_id == opponent.user_id)) &
+                    ((Match.status == MatchStatus.PENDING) | (Match.status == MatchStatus.ACTIVE))
                 )
-                .first()
+                .limit(1)
             )
-
-            if opponent_match:
-                logger.info(
-                    f"Opponent {opponent.user_id} already has an active or pending match, skipping"
-                )
-                # Remove the opponent from the queue to avoid repeatedly trying to match them
+            res2 = await db.execute(stmt2)
+            opp_match = res2.scalars().first()
+            if opp_match:
+                logger.info(f"Opponent {opponent.user_id} busy, removing from queue")
                 player_queue.remove(opponent)
                 return None
 
-            # Remove the opponent from the queue
+            # Remove and create new match
             player_queue.remove(opponent)
 
-            # Create new match
+            # Select an appropriate problem for the match
+            problem_params = ProblemSelectionParams(
+                player1_rating=rating,
+                player2_rating=opponent.rating
+            )
+
+            selected_problem = await select_problem_for_match(db, problem_params)
+            problem_id = selected_problem.id if selected_problem else None
+
             new_match = Match(
                 player1_id=user_id,
                 player2_id=opponent.user_id,
+                problem_id=problem_id,
                 status=MatchStatus.PENDING,
                 start_time=datetime.utcnow(),
             )
-
             db.add(new_match)
-            db.commit()
-            db.refresh(new_match)
+            await db.commit()
+            await db.refresh(new_match)
 
-            # Send match notifications to both players
-            await send_match_notification(
-                user_id, new_match.id, opponent.user_id, new_match.status
-            )
-            await send_match_notification(
-                opponent.user_id, new_match.id, user_id, new_match.status
-            )
+            if problem_id:
+                logger.info(f"Assigned problem ID {problem_id} to match ID {new_match.id}")
+            else:
+                logger.warning(f"No problem assigned to match ID {new_match.id}")
 
+            # Notify both players
+            await send_match_notification(user_id, new_match.id, opponent.user_id, new_match.status)
+            await send_match_notification(opponent.user_id, new_match.id, user_id, new_match.status)
             return new_match
 
     return None
 
 
-async def check_match_timeouts(db: Session):
-    """
-    Check for pending matches that have timed out and automatically decline them.
-    """
+async def check_match_timeouts(db: AsyncSession) -> int:
     now = datetime.utcnow()
-    timeout_threshold = now - timedelta(seconds=MATCH_ACCEPTANCE_TIMEOUT)
+    threshold = now - timedelta(seconds=MATCH_ACCEPTANCE_TIMEOUT)
 
-    # Find all pending matches that have timed out
-    timed_out_matches = (
-        db.query(Match)
-        .filter(
-            (Match.status == MatchStatus.PENDING)
-            & (Match.start_time < timeout_threshold)
+    stmt = (
+        select(Match)
+        .where(
+            (Match.status == MatchStatus.PENDING) &
+            (Match.start_time < threshold)
         )
-        .all()
+    )
+    result = await db.execute(stmt)
+    timed_out = result.scalars().all()
+
+    for m in timed_out:
+        m.status = MatchStatus.DECLINED
+        m.end_time = now
+        logger.info(f"Match {m.id} automatically declined due to timeout")
+
+    if timed_out:
+        await db.commit()
+    return len(timed_out)
+
+
+async def select_problem_for_match(
+    db: AsyncSession, 
+    params: ProblemSelectionParams
+) -> Optional[Problem]:
+    """
+    Select an appropriate problem for a match based on player ratings.
+
+    Args:
+        db: Database session
+        params: Parameters for problem selection including player ratings
+
+    Returns:
+        A Problem object or None if no suitable problem is found
+    """
+    # Calculate target rating based on average of player ratings
+    avg_rating = (params.player1_rating + params.player2_rating) // 2
+
+    # Define acceptable rating range (within 200 points of average)
+    # This ensures the problem is neither too easy nor too hard for both players
+    min_rating = avg_rating - 200
+    max_rating = avg_rating + 200
+
+    logger.info(
+        f"Selecting problem for match: Player ratings {params.player1_rating} and {params.player2_rating}, "
+        f"Target rating range: {min_rating}-{max_rating}"
     )
 
-    # Automatically decline timed out matches
-    for match in timed_out_matches:
-        match.status = MatchStatus.DECLINED
-        match.end_time = now
-        logger.info(f"Match {match.id} automatically declined due to timeout")
+    # Build query
+    query = select(Problem).where(
+        Problem.rating >= min_rating,
+        Problem.rating <= max_rating
+    )
 
-    if timed_out_matches:
-        db.commit()
+    # Add topic filter if preferred topics are specified
+    if params.preferred_topics:
+        # This is a simplification - actual implementation would depend on how
+        # the database handles array containment checks
+        # For PostgreSQL, you might use the && operator (array overlap)
+        logger.info(f"Filtering by preferred topics: {params.preferred_topics}")
+        # This is a placeholder - implement based on your database
+        # query = query.where(Problem.topics.overlap(params.preferred_topics))
 
-    return len(timed_out_matches)
+    # Exclude problems that have been seen before
+    if params.exclude_problem_ids:
+        logger.info(f"Excluding problem IDs: {params.exclude_problem_ids}")
+        query = query.where(Problem.id.notin_(params.exclude_problem_ids))
+
+    # Order by how close the problem rating is to the average player rating
+    # and limit to 10 candidates
+    query = query.order_by(
+        # Use abs() function to find problems closest to target rating
+        # This is a simplification - implement based on your database
+        # func.abs(Problem.rating - avg_rating)
+    ).limit(10)
+
+    try:
+        result = await db.execute(query)
+        problems = result.scalars().all()
+
+        if not problems:
+            logger.warning(
+                f"No suitable problems found in rating range {min_rating}-{max_rating}"
+            )
+            # Fallback: get any problem regardless of rating
+            fallback_query = select(Problem)
+            if params.exclude_problem_ids:
+                fallback_query = fallback_query.where(Problem.id.notin_(params.exclude_problem_ids))
+            fallback_query = fallback_query.limit(1)
+
+            fallback_result = await db.execute(fallback_query)
+            problems = fallback_result.scalars().all()
+
+            if not problems:
+                logger.error("No problems found in the database")
+                return None
+
+        # If multiple problems match criteria, select one randomly
+        # In a real implementation, you might want to use a more sophisticated
+        # selection algorithm
+        import random
+        selected_problem = random.choice(problems)
+
+        logger.info(
+            f"Selected problem ID {selected_problem.id} with rating {selected_problem.rating} "
+            f"for match with average player rating {avg_rating}"
+        )
+
+        return selected_problem
+    except Exception as e:
+        logger.error(f"Error selecting problem for match: {e}")
+        return None
 
 
-async def process_match_queue(db: Session):
-    """
-    Process the match queue to match players with similar ratings.
-    This should be run as a background task or service.
-    """
-    # Check for timed out matches
+async def process_match_queue(db: AsyncSession):
+    # Decline timed-out matches first
     timed_out_count = await check_match_timeouts(db)
     if timed_out_count > 0:
-        logger.info(f"Automatically declined {timed_out_count} timed out matches")
+        logger.info(f"Automatically declined {timed_out_count} matches")
 
-    # Create Kafka topics if they don't exist
-    # This is done here instead of at container startup
     create_kafka_topics()
 
     try:
-        # Create a Kafka consumer
         consumer = AIOKafkaConsumer(
             Config.PLAYER_QUEUE_TOPIC,
             bootstrap_servers=f"{Config.KAFKA_HOST}:{Config.KAFKA_PORT}",
             group_id="match_processor",
             auto_offset_reset="earliest",
         )
-
-        # Start the consumer
         await consumer.start()
-
         try:
-            # Process messages from the queue
             async for message in consumer:
-                try:
-                    # Deserialize the message
-                    data = json.loads(message.value.decode("utf-8"))
-                    entry = PlayerQueueEntry(**data)
-
-                    logger.info(f"Processing player {entry.user_id} from queue")
-
-                    # Find a match for the player
-                    match = await find_match_for_player(db, entry.user_id, entry.rating)
-
-                    if match:
-                        logger.info(
-                            f"Created match {match.id} between players {match.player1_id} and {match.player2_id}"
-                        )
-                    else:
-                        # If no match found, add to in-memory queue for now
-                        # In a real implementation, we might want to keep it in Kafka
-                        player_queue.append(entry)
-                        logger.info(
-                            f"No match found for player {entry.user_id}, added to in-memory queue"
-                        )
-
-                except Exception as e:
-                    logger.error(f"Error processing message: {str(e)}")
-
+                data = json.loads(message.value.decode("utf-8"))
+                entry = PlayerQueueEntry(**data)
+                logger.info(f"Processing queued player {entry.user_id}")
+                match = await find_match_for_player(db, entry.user_id, entry.rating)
+                if match:
+                    logger.info(f"Created match {match.id} between {match.player1_id} and {match.player2_id}")
+                else:
+                    player_queue.append(entry)
+                    logger.info(f"No match for player {entry.user_id}, re-queued in memory")
         finally:
-            # Stop the consumer
             await consumer.stop()
-
     except Exception as e:
-        logger.error(f"Error starting Kafka consumer: {str(e)}")
-
-        # Process in-memory queue as fallback
-        logger.info("Processing in-memory queue as fallback")
-
-        # Group players by rating similarity
-        processed_ids = set()
+        logger.error(f"Error starting Kafka consumer: {e}")
+        logger.info("Fallback: process in-memory queue")
+        processed = set()
         for entry in sorted(player_queue, key=lambda x: x.timestamp):
-            if entry.user_id in processed_ids:
+            if entry.user_id in processed:
                 continue
-
             match = await find_match_for_player(db, entry.user_id, entry.rating)
             if match:
-                processed_ids.add(entry.user_id)
-                processed_ids.add(match.player2_id)
-                logger.info(
-                    f"Created match {match.id} between players {match.player1_id} and {match.player2_id}"
-                )
+                processed.add(entry.user_id)
+                processed.add(match.player2_id)
+                logger.info(f"Created match {match.id} in fallback processing")

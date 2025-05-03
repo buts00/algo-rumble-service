@@ -4,6 +4,7 @@ from typing import List
 
 from fastapi import (APIRouter, BackgroundTasks, Depends, Request, WebSocket,
                      WebSocketDisconnect)
+from sqlalchemy import select, or_
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
@@ -15,14 +16,21 @@ from src.errors import (AuthorizationException, BadRequestException,
                         ValidationException)
 
 from .models.match import Match, MatchStatus
+from .models.problem import Problem
 from .schemas.match import MatchResponse
-from .service import add_player_to_queue, process_match_queue
+from .schemas.problem import ProblemCreate, ProblemResponse, ProblemUpdate, ProblemSelectionParams
+from .service import add_player_to_queue, process_match_queue, select_problem_for_match
 from .websocket import manager
+from .rating import update_ratings_after_match
 
 # Create a module-specific logger
 match_logger = logger.getChild("match")
 
 router = APIRouter(prefix="/match", tags=["match"])
+problem_router = APIRouter(prefix="/problems", tags=["problems"])
+
+# Include the problem router in the main router
+router.include_router(problem_router)
 
 
 @router.post("/find")
@@ -50,7 +58,8 @@ async def find_match(
             raise ResourceNotFoundException(detail="User not found")
 
         try:
-            user = db.query(User).filter(User.id == user_uuid).first()
+            result = await db.execute(select(User).where(User.id == user_uuid))
+            user = result.scalars().first()
         except SQLAlchemyError as db_error:
             match_logger.error(f"Database error during user lookup: {str(db_error)}")
             raise DatabaseException(
@@ -69,17 +78,20 @@ async def find_match(
 
         # Check if the user already has an active or pending match
         try:
-            existing_match = (
-                db.query(Match)
-                .filter(
-                    ((Match.player1_id == user_uuid) | (Match.player2_id == user_uuid))
-                    & (
-                        (Match.status == MatchStatus.PENDING)
-                        | (Match.status == MatchStatus.ACTIVE)
+            # Correct async query
+            result = await db.execute(
+                select(Match).where(
+                    or_(
+                        Match.player1_id == user_uuid,
+                        Match.player2_id == user_uuid
+                    ),
+                    or_(
+                        Match.status == MatchStatus.PENDING,
+                        Match.status == MatchStatus.ACTIVE
                     )
                 )
-                .first()
             )
+            existing_match = result.scalars().first()
         except SQLAlchemyError as db_error:
             match_logger.error(f"Database error during match lookup: {str(db_error)}")
             raise DatabaseException(
@@ -150,17 +162,19 @@ async def get_queue_status(
 
         # Check if the user is in a pending or active match
         try:
-            match = (
-                db.query(Match)
-                .filter(
-                    ((Match.player1_id == user_uuid) | (Match.player2_id == user_uuid))
-                    & (
-                        (Match.status == MatchStatus.PENDING)
-                        | (Match.status == MatchStatus.ACTIVE)
+            result = await db.execute(
+                select(Match).where(
+                    or_(
+                        Match.player1_id == user_uuid,
+                        Match.player2_id == user_uuid
+                    ),
+                    or_(
+                        Match.status == MatchStatus.PENDING,
+                        Match.status == MatchStatus.ACTIVE
                     )
                 )
-                .first()
             )
+            match = result.scalars().first()
         except SQLAlchemyError as db_error:
             match_logger.error(f"Database error during match lookup: {str(db_error)}")
             raise DatabaseException(
@@ -211,14 +225,17 @@ async def get_active_matches(
             raise ResourceNotFoundException(detail="User not found")
 
         try:
-            matches = (
-                db.query(Match)
-                .filter(
-                    ((Match.player1_id == user_uuid) | (Match.player2_id == user_uuid))
-                    & (Match.status == "active")
+            # Async query
+            result = await db.execute(
+                select(Match).where(
+                    or_(
+                        Match.player1_id == user_uuid,
+                        Match.player2_id == user_uuid
+                    ),
+                    Match.status == MatchStatus.ACTIVE
                 )
-                .all()
             )
+            matches = result.scalars().all()
         except SQLAlchemyError as db_error:
             match_logger.error(
                 f"Database error during active matches lookup: {str(db_error)}"
@@ -269,7 +286,8 @@ async def accept_match(
             raise ResourceNotFoundException(detail="User not found")
 
         try:
-            match = db.query(Match).filter(Match.id == match_id).first()
+            result = await db.execute(select(Match).where(Match.id == match_id))
+            match = result.scalars().first()
         except SQLAlchemyError as db_error:
             match_logger.error(f"Database error during match lookup: {str(db_error)}")
             raise DatabaseException(
@@ -305,9 +323,9 @@ async def accept_match(
             try:
                 match.status = MatchStatus.DECLINED
                 match.end_time = now
-                db.flush()  # Flush changes to the database
-                db.commit()
-                db.refresh(match)
+                await db.flush()
+                await db.commit()
+                await db.refresh(match)
                 match_logger.info(
                     f"Match automatically declined due to timeout: Match ID {match_id}"
                 )
@@ -356,8 +374,421 @@ async def accept_match(
         )
 
 
+@router.post("/complete/{match_id}")
+async def complete_match(
+    match_id: int,
+    user_id: str,
+    winner_id: str,
+    db: Session = Depends(get_session),
+    request: Request = None,
+):
+    """
+    Complete a match and update player ratings.
+    Only the match creator (player1) can complete a match.
+    The winner_id must be either player1_id or player2_id.
+    """
+    match_logger.info(
+        f"Match completion request: Match ID {match_id}, User ID {user_id}, Winner ID {winner_id}"
+    )
+
+    try:
+        # Convert user_id to UUID
+        try:
+            user_uuid = uuid.UUID(user_id)
+            winner_uuid = uuid.UUID(winner_id)
+        except ValueError:
+            match_logger.warning(
+                f"Match completion failed: Invalid ID format: User ID {user_id}, Winner ID {winner_id}"
+            )
+            raise ResourceNotFoundException(detail="User not found")
+
+        try:
+            result = await db.execute(select(Match).where(Match.id == match_id))
+            match = result.scalars().first()
+        except SQLAlchemyError as db_error:
+            match_logger.error(f"Database error during match lookup: {str(db_error)}")
+            raise DatabaseException(
+                detail="Failed to retrieve match due to database error"
+            )
+
+        if not match:
+            match_logger.warning(
+                f"Match completion failed: Match not found: ID {match_id}"
+            )
+            raise ResourceNotFoundException(detail="Match not found")
+
+        match_logger.debug(
+            f"Match found: ID {match_id}, Player1 {match.player1_id}, Player2 {match.player2_id}, Status {match.status}"
+        )
+
+        # Only player1 (match creator) can complete the match
+        if match.player1_id != user_uuid:
+            match_logger.warning(
+                f"Match completion failed: User not authorized: User ID {user_uuid}, "
+                f"Expected Player1 ID {match.player1_id}"
+            )
+            raise AuthorizationException(detail="Not authorized to complete this match")
+
+        # Winner must be either player1 or player2
+        if winner_uuid != match.player1_id and winner_uuid != match.player2_id:
+            match_logger.warning(
+                f"Match completion failed: Invalid winner: Winner ID {winner_uuid}, "
+                f"Expected either {match.player1_id} or {match.player2_id}"
+            )
+            raise BadRequestException(detail="Winner must be one of the match participants")
+
+        # Match must be in ACTIVE status
+        if match.status != MatchStatus.ACTIVE:
+            match_logger.warning(
+                f"Match completion failed: Invalid match status: {match.status}, "
+                f"Expected {MatchStatus.ACTIVE}"
+            )
+            raise BadRequestException(detail=f"Match must be in {MatchStatus.ACTIVE} status to complete")
+
+        try:
+            # Update match status and set winner
+            match.status = MatchStatus.COMPLETED
+            match.winner_id = winner_uuid
+            match.end_time = datetime.utcnow()
+
+            # Update player ratings using Elo system
+            loser_id = match.player2_id if winner_uuid == match.player1_id else match.player1_id
+            new_ratings = await update_ratings_after_match(db, winner_uuid, loser_id)
+
+            await db.commit()
+            await db.refresh(match)
+
+            match_logger.info(
+                f"Match completed successfully: Match ID {match_id}, "
+                f"Winner ID {winner_uuid}, New ratings: {new_ratings}"
+            )
+
+            return {
+                "message": "Match completed successfully",
+                "match_id": match.id,
+                "winner_id": str(match.winner_id),
+                "new_ratings": new_ratings
+            }
+        except SQLAlchemyError as db_error:
+            match_logger.error(
+                f"Database error during match completion: {str(db_error)}"
+            )
+            raise DatabaseException(
+                detail="Failed to complete match due to database error"
+            )
+    except (
+        ResourceNotFoundException,
+        AuthorizationException,
+        ValidationException,
+        BadRequestException,
+        DatabaseException,
+    ):
+        # These exceptions will be handled by the global exception handlers
+        raise
+    except Exception as e:
+        match_logger.error(f"Unexpected error during match completion: {str(e)}")
+        raise DatabaseException(
+            detail="An unexpected error occurred while completing the match"
+        )
+
+
+# Problem management endpoints
+
+@problem_router.post("/", response_model=ProblemResponse)
+async def create_problem(
+    problem: ProblemCreate,
+    db: Session = Depends(get_session),
+    request: Request = None,
+):
+    """
+    Create a new problem.
+    """
+    match_logger.info(f"Creating new problem: {problem.title}")
+
+    try:
+        new_problem = Problem(
+            rating=problem.rating,
+            topics=problem.topics,
+            title=problem.title,
+            description=problem.description,
+            difficulty=problem.difficulty,
+            bucket_path=problem.bucket_path,
+        )
+
+        db.add(new_problem)
+        await db.commit()
+        await db.refresh(new_problem)
+
+        match_logger.info(f"Problem created successfully: ID {new_problem.id}")
+        return new_problem
+    except SQLAlchemyError as db_error:
+        match_logger.error(f"Database error creating problem: {str(db_error)}")
+        raise DatabaseException(detail="Failed to create problem due to database error")
+    except Exception as e:
+        match_logger.error(f"Unexpected error creating problem: {str(e)}")
+        raise DatabaseException(detail="An unexpected error occurred while creating the problem")
+
+
+@problem_router.get("/{problem_id}", response_model=ProblemResponse)
+async def get_problem(
+    problem_id: int,
+    db: Session = Depends(get_session),
+    request: Request = None,
+):
+    """
+    Get a problem by ID.
+    """
+    match_logger.info(f"Getting problem: ID {problem_id}")
+
+    try:
+        result = await db.execute(select(Problem).where(Problem.id == problem_id))
+        problem = result.scalars().first()
+
+        if not problem:
+            match_logger.warning(f"Problem not found: ID {problem_id}")
+            raise ResourceNotFoundException(detail="Problem not found")
+
+        match_logger.info(f"Problem retrieved successfully: ID {problem_id}")
+        return problem
+    except ResourceNotFoundException:
+        raise
+    except SQLAlchemyError as db_error:
+        match_logger.error(f"Database error retrieving problem: {str(db_error)}")
+        raise DatabaseException(detail="Failed to retrieve problem due to database error")
+    except Exception as e:
+        match_logger.error(f"Unexpected error retrieving problem: {str(e)}")
+        raise DatabaseException(detail="An unexpected error occurred while retrieving the problem")
+
+
+@problem_router.put("/{problem_id}", response_model=ProblemResponse)
+async def update_problem(
+    problem_id: int,
+    problem_update: ProblemUpdate,
+    db: Session = Depends(get_session),
+    request: Request = None,
+):
+    """
+    Update a problem.
+    """
+    match_logger.info(f"Updating problem: ID {problem_id}")
+
+    try:
+        result = await db.execute(select(Problem).where(Problem.id == problem_id))
+        problem = result.scalars().first()
+
+        if not problem:
+            match_logger.warning(f"Problem not found: ID {problem_id}")
+            raise ResourceNotFoundException(detail="Problem not found")
+
+        # Update fields if provided
+        update_data = problem_update.model_dump(exclude_unset=True)
+        for key, value in update_data.items():
+            if value is not None:
+                setattr(problem, key, value)
+
+        problem.updated_at = datetime.now()
+
+        await db.commit()
+        await db.refresh(problem)
+
+        match_logger.info(f"Problem updated successfully: ID {problem_id}")
+        return problem
+    except ResourceNotFoundException:
+        raise
+    except SQLAlchemyError as db_error:
+        match_logger.error(f"Database error updating problem: {str(db_error)}")
+        raise DatabaseException(detail="Failed to update problem due to database error")
+    except Exception as e:
+        match_logger.error(f"Unexpected error updating problem: {str(e)}")
+        raise DatabaseException(detail="An unexpected error occurred while updating the problem")
+
+
+@problem_router.delete("/{problem_id}")
+async def delete_problem(
+    problem_id: int,
+    db: Session = Depends(get_session),
+    request: Request = None,
+):
+    """
+    Delete a problem.
+    """
+    match_logger.info(f"Deleting problem: ID {problem_id}")
+
+    try:
+        result = await db.execute(select(Problem).where(Problem.id == problem_id))
+        problem = result.scalars().first()
+
+        if not problem:
+            match_logger.warning(f"Problem not found: ID {problem_id}")
+            raise ResourceNotFoundException(detail="Problem not found")
+
+        await db.delete(problem)
+        await db.commit()
+
+        match_logger.info(f"Problem deleted successfully: ID {problem_id}")
+        return {"message": f"Problem {problem_id} deleted successfully"}
+    except ResourceNotFoundException:
+        raise
+    except SQLAlchemyError as db_error:
+        match_logger.error(f"Database error deleting problem: {str(db_error)}")
+        raise DatabaseException(detail="Failed to delete problem due to database error")
+    except Exception as e:
+        match_logger.error(f"Unexpected error deleting problem: {str(e)}")
+        raise DatabaseException(detail="An unexpected error occurred while deleting the problem")
+
+
+@problem_router.get("/", response_model=List[ProblemResponse])
+async def list_problems(
+    skip: int = 0,
+    limit: int = 100,
+    db: Session = Depends(get_session),
+    request: Request = None,
+):
+    """
+    List all problems with pagination.
+    """
+    match_logger.info(f"Listing problems: skip={skip}, limit={limit}")
+
+    try:
+        result = await db.execute(select(Problem).offset(skip).limit(limit))
+        problems = result.scalars().all()
+
+        match_logger.info(f"Retrieved {len(problems)} problems")
+        return problems
+    except SQLAlchemyError as db_error:
+        match_logger.error(f"Database error listing problems: {str(db_error)}")
+        raise DatabaseException(detail="Failed to list problems due to database error")
+    except Exception as e:
+        match_logger.error(f"Unexpected error listing problems: {str(e)}")
+        raise DatabaseException(detail="An unexpected error occurred while listing problems")
+
+
+@router.post("/submit-solution/{match_id}")
+async def submit_solution(
+    match_id: int,
+    user_id: str,
+    is_correct: bool,
+    db: Session = Depends(get_session),
+    request: Request = None,
+):
+    """
+    Submit a solution for a match.
+    If the solution is correct, the match ends instantly and the player who submitted the solution wins.
+    Player ratings are updated accordingly.
+    """
+    match_logger.info(
+        f"Solution submission: Match ID {match_id}, User ID {user_id}, Correct: {is_correct}"
+    )
+
+    try:
+        # Convert user_id to UUID
+        try:
+            user_uuid = uuid.UUID(user_id)
+        except ValueError:
+            match_logger.warning(
+                f"Solution submission failed: Invalid user ID format: {user_id}"
+            )
+            raise ResourceNotFoundException(detail="User not found")
+
+        # Get the match
+        result = await db.execute(select(Match).where(Match.id == match_id))
+        match = result.scalars().first()
+
+        if not match:
+            match_logger.warning(
+                f"Solution submission failed: Match not found: ID {match_id}"
+            )
+            raise ResourceNotFoundException(detail="Match not found")
+
+        # Check if user is part of the match
+        if match.player1_id != user_uuid and match.player2_id != user_uuid:
+            match_logger.warning(
+                f"Solution submission failed: User not in match: User ID {user_uuid}, "
+                f"Match ID {match_id}"
+            )
+            raise AuthorizationException(detail="Not authorized to submit solution for this match")
+
+        # Check if match is active
+        if match.status != MatchStatus.ACTIVE:
+            match_logger.warning(
+                f"Solution submission failed: Invalid match status: {match.status}, "
+                f"Expected {MatchStatus.ACTIVE}"
+            )
+            raise BadRequestException(detail=f"Match must be in {MatchStatus.ACTIVE} status to submit solution")
+
+        # If solution is correct, end the match and update ratings
+        if is_correct:
+            match_logger.info(
+                f"Correct solution submitted: Match ID {match_id}, User ID {user_uuid}"
+            )
+
+            # Update match status and set winner
+            match.status = MatchStatus.COMPLETED
+            match.winner_id = user_uuid
+            match.end_time = datetime.utcnow()
+
+            # Update player ratings
+            loser_id = match.player2_id if user_uuid == match.player1_id else match.player1_id
+            new_ratings = await update_ratings_after_match(db, user_uuid, loser_id)
+
+            await db.commit()
+            await db.refresh(match)
+
+            # Notify both players about match completion
+            winner_msg = {
+                "event": "match_completed",
+                "match_id": match.id,
+                "winner_id": str(user_uuid),
+                "new_rating": new_ratings[0] if new_ratings else None
+            }
+
+            loser_msg = {
+                "event": "match_completed",
+                "match_id": match.id,
+                "winner_id": str(user_uuid),
+                "new_rating": new_ratings[1] if new_ratings else None
+            }
+
+            await manager.send_match_notification(str(user_uuid), winner_msg)
+            await manager.send_match_notification(str(loser_id), loser_msg)
+
+            match_logger.info(
+                f"Match completed successfully: Match ID {match_id}, "
+                f"Winner ID {user_uuid}, New ratings: {new_ratings}"
+            )
+
+            return {
+                "message": "Correct solution submitted. Match completed.",
+                "match_id": match.id,
+                "winner_id": str(match.winner_id),
+                "new_ratings": new_ratings
+            }
+        else:
+            # If solution is incorrect, just return a message
+            match_logger.info(
+                f"Incorrect solution submitted: Match ID {match_id}, User ID {user_uuid}"
+            )
+
+            return {
+                "message": "Incorrect solution submitted. Match continues."
+            }
+    except (
+        ResourceNotFoundException,
+        AuthorizationException,
+        BadRequestException,
+        DatabaseException,
+    ):
+        # These exceptions will be handled by the global exception handlers
+        raise
+    except Exception as e:
+        match_logger.error(f"Unexpected error during solution submission: {str(e)}")
+        raise DatabaseException(
+            detail="An unexpected error occurred while submitting the solution"
+        )
+
+
 @router.websocket("/ws/{user_id}")
-async def websocket_endpoint(websocket: WebSocket, user_id: uuid.UUID):
+async def websocket_endpoint(websocket: WebSocket, user_id: str):
     """
     WebSocket endpoint for real-time match notifications.
     Clients can connect to this endpoint to receive real-time updates about their matches.
@@ -365,6 +796,7 @@ async def websocket_endpoint(websocket: WebSocket, user_id: uuid.UUID):
     match_logger.info(f"WebSocket connection request from user ID: {user_id}")
 
     try:
+        # user_id is already a string from the path parameter
         await manager.connect(websocket, user_id)
         match_logger.info(f"WebSocket connection established for user ID: {user_id}")
 

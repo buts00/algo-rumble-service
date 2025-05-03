@@ -1,15 +1,12 @@
 from datetime import datetime
 from typing import Optional
-
-from pydantic import BaseModel
+from pydantic import BaseModel,UUID4
 
 
 class PlayerQueueEntry(BaseModel):
-    """
-    Represents a player in the match queue.
-    """
 
-    user_id: int
+
+    user_id: UUID4
     rating: int
     timestamp: datetime = datetime.utcnow()
 

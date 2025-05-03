@@ -26,7 +26,7 @@ class User(BaseModel, table=True):
     username: str = Field(sa_column=Column(String(50), unique=True))
     password_hash: str = Field(exclude=True)
     role: UserRole = Field(sa_column=Column(Enum(UserRole), default=UserRole.USER))
-    rating: int = Field(default=200, sa_column=Column(INTEGER_TYPE, default=0))
+    rating: int = Field(default=1000, sa_column=Column(INTEGER_TYPE, default=1000))
     country_code: str = Field(sa_column=Column(String(5)))
     refresh_token: str = Field(
         sa_column=Column(String(500), nullable=True, default=None)

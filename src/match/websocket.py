@@ -13,9 +13,9 @@ class ConnectionManager:
 
     def __init__(self):
         # Maps user_id to a list of active WebSocket connections
-        self.active_connections: Dict[int, List[WebSocket]] = {}
+        self.active_connections: Dict[str, List[WebSocket]] = {}
 
-    async def connect(self, websocket: WebSocket, user_id: int):
+    async def connect(self, websocket: WebSocket, user_id: str):
         """
         Connect a WebSocket for a specific user.
         """
@@ -27,7 +27,7 @@ class ConnectionManager:
             f"User {user_id} connected to WebSocket. Total connections: {len(self.active_connections[user_id])}"
         )
 
-    def disconnect(self, websocket: WebSocket, user_id: int):
+    def disconnect(self, websocket: WebSocket, user_id: str):
         """
         Disconnect a WebSocket for a specific user.
         """
@@ -38,7 +38,7 @@ class ConnectionManager:
                 del self.active_connections[user_id]
             logger.info(f"User {user_id} disconnected from WebSocket")
 
-    async def send_match_notification(self, user_id: int, message: dict):
+    async def send_match_notification(self, user_id: str, message: dict):
         """
         Send a match notification to a specific user.
         """
