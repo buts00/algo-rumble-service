@@ -32,6 +32,8 @@ class Match(SQLModel, table=True):
             SQLEnum(MatchStatus), nullable=False, default=MatchStatus.CREATED
         )
     )
+    player1_accepted: bool = Field(default=False)
+    player2_accepted: bool = Field(default=False)
     start_time: datetime = Field(
         sa_column=Column(DateTime, default=datetime.utcnow, nullable=False)
     )

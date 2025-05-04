@@ -19,7 +19,7 @@ from .models.match import Match, MatchStatus
 from .models.problem import Problem
 from .schemas.match import MatchResponse
 from .schemas.problem import ProblemCreate, ProblemResponse, ProblemUpdate, ProblemSelectionParams
-from .service import add_player_to_queue, process_match_queue, select_problem_for_match
+from .service import add_player_to_queue, process_match_queue, select_problem_for_match, send_match_notification
 from .websocket import manager
 from .rating import update_ratings_after_match
 
@@ -304,16 +304,17 @@ async def accept_match(
             f"Match found: ID {match_id}, Player1 {match.player1_id}, Player2 {match.player2_id}, Status {match.status}"
         )
 
-        if match.player2_id != user_uuid:
+        # Check if the user is either player1 or player2
+        if match.player1_id != user_uuid and match.player2_id != user_uuid:
             match_logger.warning(
                 f"Match acceptance failed: User not authorized: User ID {user_uuid}, "
-                f"Expected Player2 ID {match.player2_id}"
+                f"Expected Player1 ID {match.player1_id} or Player2 ID {match.player2_id}"
             )
             raise AuthorizationException(detail="Not authorized to accept this match")
 
         # Check if the match has timed out (15 seconds)
         now = datetime.utcnow()
-        timeout_threshold = match.start_time + timedelta(seconds=15)
+        timeout_threshold = match.start_time + timedelta(seconds=60)
 
         if now > timeout_threshold:
             match_logger.warning(
@@ -342,10 +343,26 @@ async def accept_match(
             )
 
         try:
-            match.status = MatchStatus.ACTIVE
-            db.flush()  # Flush changes to the database
-            db.commit()
-            db.refresh(match)
+            # Update the acceptance status for the current player
+            if match.player1_id == user_uuid:
+                match.player1_accepted = True
+                match_logger.info(f"Player 1 (ID: {user_uuid}) accepted match {match_id}")
+            else:  # player2_id == user_uuid
+                match.player2_accepted = True
+                match_logger.info(f"Player 2 (ID: {user_uuid}) accepted match {match_id}")
+
+            # If both players have accepted, set the match to ACTIVE
+            if match.player1_accepted and match.player2_accepted:
+                match.status = MatchStatus.ACTIVE
+                match_logger.info(f"Both players accepted match {match_id}, setting status to ACTIVE")
+
+            await db.flush()  # Flush changes to the database
+            await db.commit()
+            await db.refresh(match)
+
+            # Notify the other player about the acceptance
+            other_player_id = match.player2_id if match.player1_id == user_uuid else match.player1_id
+            await send_match_notification(other_player_id, match.id, user_uuid, match.status)
         except SQLAlchemyError as db_error:
             match_logger.error(
                 f"Database error during match status update: {str(db_error)}"
@@ -355,9 +372,22 @@ async def accept_match(
             )
 
         match_logger.info(
-            f"Match accepted successfully: Match ID {match_id}, User ID {user_uuid}"
+            f"Match acceptance processed: Match ID {match_id}, User ID {user_uuid}, Status {match.status}"
         )
-        return {"message": "Match accepted"}
+
+        # Return appropriate message based on match status
+        if match.status == MatchStatus.ACTIVE:
+            return {"message": "Match accepted by both players and is now active"}
+        else:
+            # Calculate which player still needs to accept
+            waiting_for = "player1" if not match.player1_accepted else "player2"
+            return {
+                "message": "Match acceptance recorded, waiting for other player to accept",
+                "status": match.status,
+                "player1_accepted": match.player1_accepted,
+                "player2_accepted": match.player2_accepted,
+                "waiting_for": waiting_for
+            }
     except (
         ResourceNotFoundException,
         AuthorizationException,
