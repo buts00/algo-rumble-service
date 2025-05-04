@@ -2,26 +2,36 @@ import uuid
 from datetime import datetime, timedelta
 from typing import List
 
-from fastapi import (APIRouter, BackgroundTasks, Depends, Request, WebSocket,
-                     WebSocketDisconnect)
-from sqlalchemy import select, or_
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    Request,
+    WebSocket,
+    WebSocketDisconnect,
+)
+from sqlalchemy import or_, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from src.auth.model import User
 from src.config import logger
 from src.db.main import get_session
-from src.errors import (AuthorizationException, BadRequestException,
-                        DatabaseException, ResourceNotFoundException,
-                        ValidationException)
+from src.errors import (
+    AuthorizationException,
+    BadRequestException,
+    DatabaseException,
+    ResourceNotFoundException,
+    ValidationException,
+)
 
 from .models.match import Match, MatchStatus
 from .models.problem import Problem
-from .schemas.match import MatchResponse
-from .schemas.problem import ProblemCreate, ProblemResponse, ProblemUpdate, ProblemSelectionParams
-from .service import add_player_to_queue, process_match_queue, select_problem_for_match, send_match_notification
-from .websocket import manager
 from .rating import update_ratings_after_match
+from .schemas.match import MatchResponse
+from .schemas.problem import ProblemCreate, ProblemResponse, ProblemUpdate
+from .service import add_player_to_queue, process_match_queue, send_match_notification
+from .websocket import manager
 
 # Create a module-specific logger
 match_logger = logger.getChild("match")
@@ -81,14 +91,11 @@ async def find_match(
             # Correct async query
             result = await db.execute(
                 select(Match).where(
-                    or_(
-                        Match.player1_id == user_uuid,
-                        Match.player2_id == user_uuid
-                    ),
+                    or_(Match.player1_id == user_uuid, Match.player2_id == user_uuid),
                     or_(
                         Match.status == MatchStatus.PENDING,
-                        Match.status == MatchStatus.ACTIVE
-                    )
+                        Match.status == MatchStatus.ACTIVE,
+                    ),
                 )
             )
             existing_match = result.scalars().first()
@@ -164,14 +171,11 @@ async def get_queue_status(
         try:
             result = await db.execute(
                 select(Match).where(
-                    or_(
-                        Match.player1_id == user_uuid,
-                        Match.player2_id == user_uuid
-                    ),
+                    or_(Match.player1_id == user_uuid, Match.player2_id == user_uuid),
                     or_(
                         Match.status == MatchStatus.PENDING,
-                        Match.status == MatchStatus.ACTIVE
-                    )
+                        Match.status == MatchStatus.ACTIVE,
+                    ),
                 )
             )
             match = result.scalars().first()
@@ -228,11 +232,8 @@ async def get_active_matches(
             # Async query
             result = await db.execute(
                 select(Match).where(
-                    or_(
-                        Match.player1_id == user_uuid,
-                        Match.player2_id == user_uuid
-                    ),
-                    Match.status == MatchStatus.ACTIVE
+                    or_(Match.player1_id == user_uuid, Match.player2_id == user_uuid),
+                    Match.status == MatchStatus.ACTIVE,
                 )
             )
             matches = result.scalars().all()
@@ -346,23 +347,33 @@ async def accept_match(
             # Update the acceptance status for the current player
             if match.player1_id == user_uuid:
                 match.player1_accepted = True
-                match_logger.info(f"Player 1 (ID: {user_uuid}) accepted match {match_id}")
+                match_logger.info(
+                    f"Player 1 (ID: {user_uuid}) accepted match {match_id}"
+                )
             else:  # player2_id == user_uuid
                 match.player2_accepted = True
-                match_logger.info(f"Player 2 (ID: {user_uuid}) accepted match {match_id}")
+                match_logger.info(
+                    f"Player 2 (ID: {user_uuid}) accepted match {match_id}"
+                )
 
             # If both players have accepted, set the match to ACTIVE
             if match.player1_accepted and match.player2_accepted:
                 match.status = MatchStatus.ACTIVE
-                match_logger.info(f"Both players accepted match {match_id}, setting status to ACTIVE")
+                match_logger.info(
+                    f"Both players accepted match {match_id}, setting status to ACTIVE"
+                )
 
             await db.flush()  # Flush changes to the database
             await db.commit()
             await db.refresh(match)
 
             # Notify the other player about the acceptance
-            other_player_id = match.player2_id if match.player1_id == user_uuid else match.player1_id
-            await send_match_notification(other_player_id, match.id, user_uuid, match.status)
+            other_player_id = (
+                match.player2_id if match.player1_id == user_uuid else match.player1_id
+            )
+            await send_match_notification(
+                other_player_id, match.id, user_uuid, match.status
+            )
         except SQLAlchemyError as db_error:
             match_logger.error(
                 f"Database error during match status update: {str(db_error)}"
@@ -386,7 +397,7 @@ async def accept_match(
                 "status": match.status,
                 "player1_accepted": match.player1_accepted,
                 "player2_accepted": match.player2_accepted,
-                "waiting_for": waiting_for
+                "waiting_for": waiting_for,
             }
     except (
         ResourceNotFoundException,
@@ -465,7 +476,9 @@ async def complete_match(
                 f"Match completion failed: Invalid winner: Winner ID {winner_uuid}, "
                 f"Expected either {match.player1_id} or {match.player2_id}"
             )
-            raise BadRequestException(detail="Winner must be one of the match participants")
+            raise BadRequestException(
+                detail="Winner must be one of the match participants"
+            )
 
         # Match must be in ACTIVE status
         if match.status != MatchStatus.ACTIVE:
@@ -473,7 +486,9 @@ async def complete_match(
                 f"Match completion failed: Invalid match status: {match.status}, "
                 f"Expected {MatchStatus.ACTIVE}"
             )
-            raise BadRequestException(detail=f"Match must be in {MatchStatus.ACTIVE} status to complete")
+            raise BadRequestException(
+                detail=f"Match must be in {MatchStatus.ACTIVE} status to complete"
+            )
 
         try:
             # Update match status and set winner
@@ -482,7 +497,11 @@ async def complete_match(
             match.end_time = datetime.utcnow()
 
             # Update player ratings using Elo system
-            loser_id = match.player2_id if winner_uuid == match.player1_id else match.player1_id
+            loser_id = (
+                match.player2_id
+                if winner_uuid == match.player1_id
+                else match.player1_id
+            )
             new_ratings = await update_ratings_after_match(db, winner_uuid, loser_id)
 
             await db.commit()
@@ -497,7 +516,7 @@ async def complete_match(
                 "message": "Match completed successfully",
                 "match_id": match.id,
                 "winner_id": str(match.winner_id),
-                "new_ratings": new_ratings
+                "new_ratings": new_ratings,
             }
         except SQLAlchemyError as db_error:
             match_logger.error(
@@ -523,6 +542,7 @@ async def complete_match(
 
 
 # Problem management endpoints
+
 
 @problem_router.post("/", response_model=ProblemResponse)
 async def create_problem(
@@ -556,7 +576,9 @@ async def create_problem(
         raise DatabaseException(detail="Failed to create problem due to database error")
     except Exception as e:
         match_logger.error(f"Unexpected error creating problem: {str(e)}")
-        raise DatabaseException(detail="An unexpected error occurred while creating the problem")
+        raise DatabaseException(
+            detail="An unexpected error occurred while creating the problem"
+        )
 
 
 @problem_router.get("/{problem_id}", response_model=ProblemResponse)
@@ -584,10 +606,14 @@ async def get_problem(
         raise
     except SQLAlchemyError as db_error:
         match_logger.error(f"Database error retrieving problem: {str(db_error)}")
-        raise DatabaseException(detail="Failed to retrieve problem due to database error")
+        raise DatabaseException(
+            detail="Failed to retrieve problem due to database error"
+        )
     except Exception as e:
         match_logger.error(f"Unexpected error retrieving problem: {str(e)}")
-        raise DatabaseException(detail="An unexpected error occurred while retrieving the problem")
+        raise DatabaseException(
+            detail="An unexpected error occurred while retrieving the problem"
+        )
 
 
 @problem_router.put("/{problem_id}", response_model=ProblemResponse)
@@ -630,7 +656,9 @@ async def update_problem(
         raise DatabaseException(detail="Failed to update problem due to database error")
     except Exception as e:
         match_logger.error(f"Unexpected error updating problem: {str(e)}")
-        raise DatabaseException(detail="An unexpected error occurred while updating the problem")
+        raise DatabaseException(
+            detail="An unexpected error occurred while updating the problem"
+        )
 
 
 @problem_router.delete("/{problem_id}")
@@ -664,7 +692,9 @@ async def delete_problem(
         raise DatabaseException(detail="Failed to delete problem due to database error")
     except Exception as e:
         match_logger.error(f"Unexpected error deleting problem: {str(e)}")
-        raise DatabaseException(detail="An unexpected error occurred while deleting the problem")
+        raise DatabaseException(
+            detail="An unexpected error occurred while deleting the problem"
+        )
 
 
 @problem_router.get("/", response_model=List[ProblemResponse])
@@ -690,7 +720,9 @@ async def list_problems(
         raise DatabaseException(detail="Failed to list problems due to database error")
     except Exception as e:
         match_logger.error(f"Unexpected error listing problems: {str(e)}")
-        raise DatabaseException(detail="An unexpected error occurred while listing problems")
+        raise DatabaseException(
+            detail="An unexpected error occurred while listing problems"
+        )
 
 
 @router.post("/submit-solution/{match_id}")
@@ -736,7 +768,9 @@ async def submit_solution(
                 f"Solution submission failed: User not in match: User ID {user_uuid}, "
                 f"Match ID {match_id}"
             )
-            raise AuthorizationException(detail="Not authorized to submit solution for this match")
+            raise AuthorizationException(
+                detail="Not authorized to submit solution for this match"
+            )
 
         # Check if match is active
         if match.status != MatchStatus.ACTIVE:
@@ -744,7 +778,9 @@ async def submit_solution(
                 f"Solution submission failed: Invalid match status: {match.status}, "
                 f"Expected {MatchStatus.ACTIVE}"
             )
-            raise BadRequestException(detail=f"Match must be in {MatchStatus.ACTIVE} status to submit solution")
+            raise BadRequestException(
+                detail=f"Match must be in {MatchStatus.ACTIVE} status to submit solution"
+            )
 
         # If solution is correct, end the match and update ratings
         if is_correct:
@@ -758,7 +794,9 @@ async def submit_solution(
             match.end_time = datetime.utcnow()
 
             # Update player ratings
-            loser_id = match.player2_id if user_uuid == match.player1_id else match.player1_id
+            loser_id = (
+                match.player2_id if user_uuid == match.player1_id else match.player1_id
+            )
             new_ratings = await update_ratings_after_match(db, user_uuid, loser_id)
 
             await db.commit()
@@ -769,14 +807,14 @@ async def submit_solution(
                 "event": "match_completed",
                 "match_id": match.id,
                 "winner_id": str(user_uuid),
-                "new_rating": new_ratings[0] if new_ratings else None
+                "new_rating": new_ratings[0] if new_ratings else None,
             }
 
             loser_msg = {
                 "event": "match_completed",
                 "match_id": match.id,
                 "winner_id": str(user_uuid),
-                "new_rating": new_ratings[1] if new_ratings else None
+                "new_rating": new_ratings[1] if new_ratings else None,
             }
 
             await manager.send_match_notification(str(user_uuid), winner_msg)
@@ -791,7 +829,7 @@ async def submit_solution(
                 "message": "Correct solution submitted. Match completed.",
                 "match_id": match.id,
                 "winner_id": str(match.winner_id),
-                "new_ratings": new_ratings
+                "new_ratings": new_ratings,
             }
         else:
             # If solution is incorrect, just return a message
@@ -799,9 +837,7 @@ async def submit_solution(
                 f"Incorrect solution submitted: Match ID {match_id}, User ID {user_uuid}"
             )
 
-            return {
-                "message": "Incorrect solution submitted. Match continues."
-            }
+            return {"message": "Incorrect solution submitted. Match continues."}
     except (
         ResourceNotFoundException,
         AuthorizationException,

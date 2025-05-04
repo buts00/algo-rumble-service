@@ -7,14 +7,14 @@ from typing import List, Optional, Union
 from uuid import UUID
 
 from aiokafka import AIOKafkaConsumer, AIOKafkaProducer
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.config import Config
 from src.match.models.match import Match, MatchStatus
 from src.match.models.problem import Problem
-from src.match.schemas.queue import MatchQueueResult, PlayerQueueEntry
 from src.match.schemas.problem import ProblemSelectionParams
+from src.match.schemas.queue import MatchQueueResult, PlayerQueueEntry
 from src.match.websocket import manager
 
 logger = logging.getLogger(__name__)
@@ -62,7 +62,9 @@ def create_kafka_topics():
         logger.error(f"Error creating Kafka topics: {e}")
 
 
-async def add_player_to_queue(user_id: Union[UUID, int], rating: int) -> MatchQueueResult:
+async def add_player_to_queue(
+    user_id: Union[UUID, int], rating: int
+) -> MatchQueueResult:
     """
     Add a player to the match queue using Kafka. Converts UUID and datetime to string for JSON serialization.
     """
@@ -83,8 +85,7 @@ async def add_player_to_queue(user_id: Union[UUID, int], rating: int) -> MatchQu
         try:
             await producer.send_and_wait(Config.PLAYER_QUEUE_TOPIC, message)
             return MatchQueueResult(
-                success=True,
-                message="Player added to queue successfully"
+                success=True, message="Player added to queue successfully"
             )
         finally:
             await producer.stop()
@@ -94,8 +95,7 @@ async def add_player_to_queue(user_id: Union[UUID, int], rating: int) -> MatchQu
         player_queue.append(entry)
         logger.info(f"Added player {user_id} to in-memory queue (fallback)")
         return MatchQueueResult(
-            success=True,
-            message="Player added to in-memory queue (fallback)"
+            success=True, message="Player added to in-memory queue (fallback)"
         )
 
 
@@ -113,7 +113,6 @@ async def send_match_notification(
     await manager.send_match_notification(uid, msg)
 
 
-
 async def find_match_for_player(
     db: AsyncSession, user_id: Union[UUID, int], rating: int
 ) -> Optional[Match]:
@@ -121,8 +120,11 @@ async def find_match_for_player(
     stmt = (
         select(Match)
         .where(
-            ((Match.player1_id == user_id) | (Match.player2_id == user_id)) &
-            ((Match.status == MatchStatus.PENDING) | (Match.status == MatchStatus.ACTIVE))
+            ((Match.player1_id == user_id) | (Match.player2_id == user_id))
+            & (
+                (Match.status == MatchStatus.PENDING)
+                | (Match.status == MatchStatus.ACTIVE)
+            )
         )
         .limit(1)
     )
@@ -141,8 +143,16 @@ async def find_match_for_player(
     # This helps ensure fair matches while not making players wait too long
     potential = []
     if player_queue:
-        for current_range in [base_rating_range, base_rating_range * 1.5, base_rating_range * 2]:
-            potential = [e for e in player_queue if e.user_id != user_id and abs(e.rating - rating) <= current_range]
+        for current_range in [
+            base_rating_range,
+            base_rating_range * 1.5,
+            base_rating_range * 2,
+        ]:
+            potential = [
+                e
+                for e in player_queue
+                if e.user_id != user_id and abs(e.rating - rating) <= current_range
+            ]
             if potential:
                 # Sort by rating difference to get the closest match
                 potential.sort(key=lambda x: abs(x.rating - rating))
@@ -159,8 +169,14 @@ async def find_match_for_player(
             stmt2 = (
                 select(Match)
                 .where(
-                    ((Match.player1_id == opponent.user_id) | (Match.player2_id == opponent.user_id)) &
-                    ((Match.status == MatchStatus.PENDING) | (Match.status == MatchStatus.ACTIVE))
+                    (
+                        (Match.player1_id == opponent.user_id)
+                        | (Match.player2_id == opponent.user_id)
+                    )
+                    & (
+                        (Match.status == MatchStatus.PENDING)
+                        | (Match.status == MatchStatus.ACTIVE)
+                    )
                 )
                 .limit(1)
             )
@@ -176,8 +192,7 @@ async def find_match_for_player(
 
             # Select an appropriate problem for the match
             problem_params = ProblemSelectionParams(
-                player1_rating=rating,
-                player2_rating=opponent.rating
+                player1_rating=rating, player2_rating=opponent.rating
             )
 
             selected_problem = await select_problem_for_match(db, problem_params)
@@ -195,13 +210,19 @@ async def find_match_for_player(
             await db.refresh(new_match)
 
             if problem_id:
-                logger.info(f"Assigned problem ID {problem_id} to match ID {new_match.id}")
+                logger.info(
+                    f"Assigned problem ID {problem_id} to match ID {new_match.id}"
+                )
             else:
                 logger.warning(f"No problem assigned to match ID {new_match.id}")
 
             # Notify both players
-            await send_match_notification(user_id, new_match.id, opponent.user_id, new_match.status)
-            await send_match_notification(opponent.user_id, new_match.id, user_id, new_match.status)
+            await send_match_notification(
+                user_id, new_match.id, opponent.user_id, new_match.status
+            )
+            await send_match_notification(
+                opponent.user_id, new_match.id, user_id, new_match.status
+            )
             return new_match
 
     return None
@@ -211,12 +232,8 @@ async def check_match_timeouts(db: AsyncSession) -> int:
     now = datetime.utcnow()
     threshold = now - timedelta(seconds=MATCH_ACCEPTANCE_TIMEOUT)
 
-    stmt = (
-        select(Match)
-        .where(
-            (Match.status == MatchStatus.PENDING) &
-            (Match.start_time < threshold)
-        )
+    stmt = select(Match).where(
+        (Match.status == MatchStatus.PENDING) & (Match.start_time < threshold)
     )
     result = await db.execute(stmt)
     timed_out = result.scalars().all()
@@ -232,8 +249,7 @@ async def check_match_timeouts(db: AsyncSession) -> int:
 
 
 async def select_problem_for_match(
-    db: AsyncSession, 
-    params: ProblemSelectionParams
+    db: AsyncSession, params: ProblemSelectionParams
 ) -> Optional[Problem]:
     """
     Select an appropriate problem for a match based on player ratings.
@@ -260,8 +276,7 @@ async def select_problem_for_match(
 
     # Build query
     query = select(Problem).where(
-        Problem.rating >= min_rating,
-        Problem.rating <= max_rating
+        Problem.rating >= min_rating, Problem.rating <= max_rating
     )
 
     # Add topic filter if preferred topics are specified
@@ -297,7 +312,9 @@ async def select_problem_for_match(
             # Fallback: get any problem regardless of rating
             fallback_query = select(Problem)
             if params.exclude_problem_ids:
-                fallback_query = fallback_query.where(Problem.id.notin_(params.exclude_problem_ids))
+                fallback_query = fallback_query.where(
+                    Problem.id.notin_(params.exclude_problem_ids)
+                )
             fallback_query = fallback_query.limit(1)
 
             fallback_result = await db.execute(fallback_query)
@@ -311,6 +328,7 @@ async def select_problem_for_match(
         # In a real implementation, you might want to use a more sophisticated
         # selection algorithm
         import random
+
         selected_problem = random.choice(problems)
 
         logger.info(
@@ -347,10 +365,14 @@ async def process_match_queue(db: AsyncSession):
                 logger.info(f"Processing queued player {entry.user_id}")
                 match = await find_match_for_player(db, entry.user_id, entry.rating)
                 if match:
-                    logger.info(f"Created match {match.id} between {match.player1_id} and {match.player2_id}")
+                    logger.info(
+                        f"Created match {match.id} between {match.player1_id} and {match.player2_id}"
+                    )
                 else:
                     player_queue.append(entry)
-                    logger.info(f"No match for player {entry.user_id}, re-queued in memory")
+                    logger.info(
+                        f"No match for player {entry.user_id}, re-queued in memory"
+                    )
         finally:
             await consumer.stop()
     except Exception as e:

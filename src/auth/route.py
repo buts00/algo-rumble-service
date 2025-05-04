@@ -5,13 +5,15 @@ from starlette.responses import JSONResponse
 
 from src.config import Config, logger
 from src.db.main import get_session
-from src.errors import (AuthenticationException, AuthorizationException,
-                        DatabaseException)
+from src.errors import (
+    AuthenticationException,
+    AuthorizationException,
+    DatabaseException,
+)
 
 from ..db.dependency import get_redis_client
 from ..db.redis import RedisClient
-from .dependency import (AccessTokenFromCookie, RefreshTokenFromCookie,
-                         get_user_service)
+from .dependency import AccessTokenFromCookie, RefreshTokenFromCookie, get_user_service
 from .schemas import UserCreateModel, UserLoginModel, UserResponseModel
 from .service import UserService
 from .util import create_access_token, create_refresh_token, verify_password

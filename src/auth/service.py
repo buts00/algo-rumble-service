@@ -1,5 +1,3 @@
-from random import randint
-
 from pydantic import UUID4
 from sqlmodel import select, update
 from sqlmodel.ext.asyncio.session import AsyncSession
@@ -39,9 +37,7 @@ class UserService:
 
     @staticmethod
     async def update_refresh_token(
-        user_id: UUID4,
-        refresh_token: str,
-        session: AsyncSession
+        user_id: UUID4, refresh_token: str, session: AsyncSession
     ) -> None:
         stmt = (
             update(User)
