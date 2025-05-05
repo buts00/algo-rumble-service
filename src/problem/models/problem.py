@@ -1,8 +1,11 @@
+import uuid
 from datetime import datetime
-from typing import List, Optional
+from typing import List
 
-from sqlalchemy import ARRAY, Column, Integer, String
+from sqlalchemy import ARRAY, Column, String
 from sqlmodel import Field, SQLModel
+
+from src.db.model import UUID_TYPE
 
 
 class Problem(SQLModel, table=True):
@@ -14,14 +17,14 @@ class Problem(SQLModel, table=True):
 
     __tablename__ = "problems"
 
-    id: int = Field(primary_key=True, index=True)
-    rating: int = Field(sa_column=Column(Integer, nullable=False))
-    topics: List[str] = Field(sa_column=Column(ARRAY(String), nullable=False))
+    id: uuid.UUID = Field(
+        sa_column=Column(
+            UUID_TYPE, nullable=False, primary_key=True, default=uuid.uuid4, index=True
+        )
+    )
 
-    # Additional metadata fields
-    title: str = Field(sa_column=Column(String, nullable=False))
-    description: Optional[str] = Field(sa_column=Column(String, nullable=True))
-    difficulty: Optional[str] = Field(sa_column=Column(String, nullable=True))
+    rating: int = Field(nullable=False)
+    topics: List[str] = Field(sa_column=Column(ARRAY(String), nullable=False))
 
     # Path to the problem in the Digital Ocean bucket
     bucket_path: str = Field(sa_column=Column(String, nullable=False))

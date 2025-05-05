@@ -1,3 +1,4 @@
+import uuid
 from datetime import datetime
 from typing import List, Optional
 
@@ -9,9 +10,6 @@ class ProblemBase(BaseModel):
 
     rating: int
     topics: List[str]
-    title: str
-    description: Optional[str] = None
-    difficulty: Optional[str] = None
     bucket_path: str
 
 
@@ -26,21 +24,18 @@ class ProblemUpdate(BaseModel):
 
     rating: Optional[int] = None
     topics: Optional[List[str]] = None
-    title: Optional[str] = None
-    description: Optional[str] = None
-    difficulty: Optional[str] = None
     bucket_path: Optional[str] = None
 
 
 class ProblemResponse(ProblemBase):
     """Schema for problem responses"""
 
-    id: int
+    id: uuid.UUID
     created_at: datetime
     updated_at: datetime
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 
 class ProblemSelectionParams(BaseModel):
@@ -49,4 +44,4 @@ class ProblemSelectionParams(BaseModel):
     player1_rating: int
     player2_rating: int
     preferred_topics: Optional[List[str]] = None
-    exclude_problem_ids: Optional[List[int]] = None
+    exclude_problem_ids: Optional[List[uuid.UUID]] = None

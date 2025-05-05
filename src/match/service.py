@@ -1,21 +1,21 @@
 import json
 import logging
 import os
-import subprocess
 from datetime import datetime, timedelta
 from typing import List, Optional, Union
 from uuid import UUID
 
 from aiokafka import AIOKafkaConsumer, AIOKafkaProducer
+from aiokafka.admin import AIOKafkaAdminClient, NewTopic
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.config import Config
 from src.match.models.match import Match, MatchStatus
-from src.match.models.problem import Problem
-from src.match.schemas.problem import ProblemSelectionParams
 from src.match.schemas.queue import MatchQueueResult, PlayerQueueEntry
 from src.match.websocket import manager
+from src.problem.models.problem import Problem
+from src.problem.schemas.problem import ProblemSelectionParams
 
 logger = logging.getLogger(__name__)
 
@@ -26,9 +26,9 @@ player_queue: List[PlayerQueueEntry] = []
 MATCH_ACCEPTANCE_TIMEOUT = 15
 
 
-def create_kafka_topics():
+async def create_kafka_topics():
     """
-    Create Kafka topics if they don't exist.
+    Create Kafka topics if they don't exist using the Kafka Admin API.
     This is called when the consumer starts, instead of at container startup.
     """
     try:
@@ -36,28 +36,44 @@ def create_kafka_topics():
             "KAFKA_CREATE_TOPICS", "player_queue:3:1,match_events:3:1"
         )
         topics = topics_config.split(",")
-        for topic_config in topics:
-            parts = topic_config.split(":")
-            topic_name = parts[0]
-            partitions = parts[1] if len(parts) >= 2 else "1"
-            replication = parts[2] if len(parts) >= 3 else "1"
 
-            cmd = [
-                "/opt/bitnami/kafka/bin/kafka-topics.sh",
-                "--create",
-                "--if-not-exists",
-                "--bootstrap-server",
-                f"{Config.KAFKA_HOST}:{Config.KAFKA_PORT}",
-                "--topic",
-                topic_name,
-                "--partitions",
-                partitions,
-                "--replication-factor",
-                replication,
-            ]
-            logger.info(f"Creating Kafka topic: {topic_name}")
-            subprocess.run(cmd, check=True)
-            logger.info(f"Kafka topic created: {topic_name}")
+        # Create admin client
+        admin_client = AIOKafkaAdminClient(
+            bootstrap_servers=f"{Config.KAFKA_HOST}:{Config.KAFKA_PORT}"
+        )
+
+        try:
+            await admin_client.start()
+
+            # Get existing topics
+            existing_topics = await admin_client.list_topics()
+
+            # Create new topic objects
+            new_topics = []
+            for topic_config in topics:
+                parts = topic_config.split(":")
+                topic_name = parts[0]
+                partitions = int(parts[1]) if len(parts) >= 2 else 1
+                replication = int(parts[2]) if len(parts) >= 3 else 1
+
+                if topic_name not in existing_topics:
+                    logger.info(f"Creating Kafka topic: {topic_name}")
+                    new_topic = NewTopic(
+                        name=topic_name,
+                        num_partitions=partitions,
+                        replication_factor=replication,
+                    )
+                    new_topics.append(new_topic)
+
+            # Create topics if any new ones
+            if new_topics:
+                await admin_client.create_topics(new_topics)
+                for topic in new_topics:
+                    logger.info(f"Kafka topic created: {topic.name}")
+
+        finally:
+            await admin_client.close()
+
     except Exception as e:
         logger.error(f"Error creating Kafka topics: {e}")
 
@@ -78,6 +94,10 @@ async def add_player_to_queue(
     message = json.dumps(entry_dict).encode("utf-8")
 
     try:
+        # Ensure the topic exists before sending messages
+        logger.info(f"Creating Kafka topic: {Config.PLAYER_QUEUE_TOPIC}")
+        await create_kafka_topics()
+
         producer = AIOKafkaProducer(
             bootstrap_servers=f"{Config.KAFKA_HOST}:{Config.KAFKA_PORT}"
         )
@@ -100,13 +120,16 @@ async def add_player_to_queue(
 
 
 async def send_match_notification(
-    user_id: Union[UUID, int], match_id: int, opponent_id: Union[UUID, int], status: str
+    user_id: Union[UUID, int],
+    match_id: Union[UUID, int],
+    opponent_id: Union[UUID, int],
+    status: str,
 ):
     # Ensure we use string keys for manager
     uid = str(user_id)
     msg = {
         "in_match": True,
-        "match_id": match_id,
+        "match_id": str(match_id),
         "status": status,
         "opponent_id": str(opponent_id),
     }
@@ -348,7 +371,7 @@ async def process_match_queue(db: AsyncSession):
     if timed_out_count > 0:
         logger.info(f"Automatically declined {timed_out_count} matches")
 
-    create_kafka_topics()
+    await create_kafka_topics()
 
     try:
         consumer = AIOKafkaConsumer(
