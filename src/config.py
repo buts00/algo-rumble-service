@@ -35,6 +35,22 @@ class Settings(BaseSettings):
     PLAYER_QUEUE_TOPIC: str
     MATCH_EVENTS_TOPIC: str
 
+    # External APIs
+    ONECOMPILER_API_KEY: str = (
+        "850ae9908fmsh771fb823a5d9e6ap149e0ajsn9a9bf8d1e493"  # Default key for development
+    )
+    ONECOMPILER_API_HOST: str = "onecompiler-apis.p.rapidapi.com"
+
+    # DigitalOcean
+    DIGITAL_OCEAN_API_KEY: str
+    DIGITAL_OCEAN_ACCESS_KEY_ID: str = (
+        "DO00XXXXXXXXXX"  # Default placeholder, should be overridden in .env
+    )
+    DIGITAL_OCEAN_BUCKET_URL: str = (
+        "https://algo-rumble.fra1.cdn.digitaloceanspaces.com"
+    )
+    DIGITAL_OCEAN_BUCKET_NAME: str = "algo-rumble"
+
     # Logging
     LOG_LEVEL: str = "INFO"
     LOG_FILE: str = "logs/app.log"

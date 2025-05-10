@@ -18,6 +18,15 @@ class MatchStatus(str, Enum):
     CANCELLED = "cancelled"
 
 
+class FindMatchRequest(SQLModel):
+    user_id: str
+
+
+class AcceptMatchRequest(SQLModel):
+    user_id: str
+    match_id: str
+
+
 class Match(SQLModel, table=True):
     __tablename__ = "matches"
 

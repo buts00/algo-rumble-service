@@ -1,8 +1,8 @@
 import uuid
 from datetime import datetime
-from typing import List
+from typing import Any, Dict, List, Optional
 
-from sqlalchemy import ARRAY, Column, String
+from sqlalchemy import ARRAY, JSON, Column, String
 from sqlmodel import Field, SQLModel
 
 from src.db.model import UUID_TYPE
@@ -27,7 +27,12 @@ class Problem(SQLModel, table=True):
     topics: List[str] = Field(sa_column=Column(ARRAY(String), nullable=False))
 
     # Path to the problem in the Digital Ocean bucket
-    bucket_path: str = Field(sa_column=Column(String, nullable=False))
+    bucket_path: str = Field(sa_column=Column(String, nullable=True))
+
+    # Problem details stored as JSON
+    problem_data: Optional[Dict[str, Any]] = Field(
+        sa_column=Column(JSON, nullable=True)
+    )
 
     # Timestamps
     created_at: datetime = Field(default_factory=datetime.now)

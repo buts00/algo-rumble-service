@@ -2,8 +2,14 @@ import uuid
 from datetime import datetime, timedelta
 from typing import List
 
-from fastapi import (APIRouter, BackgroundTasks, Depends, Request, WebSocket,
-                     WebSocketDisconnect)
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    Request,
+    WebSocket,
+    WebSocketDisconnect,
+)
 from sqlalchemy import or_, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
@@ -11,15 +17,18 @@ from sqlalchemy.orm import Session
 from src.auth.model import User
 from src.config import logger
 from src.db.main import get_session
-from src.errors import (AuthorizationException, BadRequestException,
-                        DatabaseException, ResourceNotFoundException,
-                        ValidationException)
+from src.errors import (
+    AuthorizationException,
+    BadRequestException,
+    DatabaseException,
+    ResourceNotFoundException,
+    ValidationException,
+)
 
-from .models.match import Match, MatchStatus
+from .models.match import AcceptMatchRequest, FindMatchRequest, Match, MatchStatus
 from .rating import update_ratings_after_match
 from .schemas.match import MatchResponse
-from .service import (add_player_to_queue, process_match_queue,
-                      send_match_notification)
+from .service import add_player_to_queue, process_match_queue, send_match_notification
 from .websocket import manager
 
 # Create a module-specific logger
@@ -30,7 +39,7 @@ router = APIRouter(prefix="/match", tags=["match"])
 
 @router.post("/find")
 async def find_match(
-    user_id: str,
+    request_data: FindMatchRequest,
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_session),
     request: Request = None,
@@ -40,6 +49,7 @@ async def find_match(
     The user will be matched with another user with a similar rating when available.
     Players can only have one active or pending match at a time.
     """
+    user_id = request_data.user_id
     match_logger.info(f"Match finding request for user ID: {user_id}")
 
     try:
@@ -133,7 +143,7 @@ async def find_match(
         )
 
 
-@router.get("/queue/status")
+@router.post("/queue/status")
 async def get_queue_status(
     user_id: str, db: Session = Depends(get_session), request: Request = None
 ):
@@ -197,7 +207,7 @@ async def get_queue_status(
         )
 
 
-@router.get("/active", response_model=List[MatchResponse])
+@router.post("/active", response_model=List[MatchResponse])
 async def get_active_matches(
     user_id: str, db: Session = Depends(get_session), request: Request = None
 ):
@@ -250,13 +260,14 @@ async def get_active_matches(
         )
 
 
-@router.post("/accept/{match_id}")
+@router.post("/accept")
 async def accept_match(
-    match_id: str,
-    user_id: str,
+    data: AcceptMatchRequest,
     db: Session = Depends(get_session),
     request: Request = None,
 ):
+    match_id = data.match_id
+    user_id = data.user_id
     match_logger.info(
         f"Match acceptance request: Match ID {match_id}, User ID {user_id}"
     )
@@ -364,7 +375,7 @@ async def accept_match(
                 match.player2_id if match.player1_id == user_uuid else match.player1_id
             )
             await send_match_notification(
-                other_player_id, match.id, user_uuid, match.status
+                other_player_id, match.id, user_uuid, match.status, db
             )
         except SQLAlchemyError as db_error:
             match_logger.error(
@@ -407,7 +418,7 @@ async def accept_match(
         )
 
 
-@router.post("/complete/{match_id}")
+@router.post("/complete")
 async def complete_match(
     match_id: int,
     user_id: str,

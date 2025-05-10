@@ -121,18 +121,65 @@ async def add_player_to_queue(
 
 async def send_match_notification(
     user_id: Union[UUID, int],
-    match_id: Union[UUID, int],
-    opponent_id: Union[UUID, int],
-    status: str,
+    match_id: Union[UUID, int] = None,
+    opponent_id: Union[UUID, int] = None,
+    status: str = None,
+    db: AsyncSession = None,
+    custom_message: dict = None,
 ):
+    """
+    Send a match notification to a user.
+
+    Args:
+        user_id: The ID of the user to send the notification to
+        match_id: The ID of the match (optional if custom_message is provided)
+        opponent_id: The ID of the opponent (optional if custom_message is provided)
+        status: The status of the match (optional if custom_message is provided)
+        db: Database session (optional)
+        custom_message: A custom message to send (optional)
+    """
     # Ensure we use string keys for manager
     uid = str(user_id)
-    msg = {
-        "in_match": True,
-        "match_id": str(match_id),
-        "status": status,
-        "opponent_id": str(opponent_id),
-    }
+
+    if custom_message is not None:
+        # Use the custom message directly
+        msg = custom_message
+    else:
+        # Create a standard match notification
+        msg = {
+            "in_match": True,
+            "match_id": str(match_id),
+            "status": status,
+            "opponent_id": str(opponent_id),
+        }
+
+        # If match is active and we have a database session, include problem information
+        if status == MatchStatus.ACTIVE and db is not None:
+            try:
+                # Get the match to find the problem_id
+                match_result = await db.execute(
+                    select(Match).where(Match.id == match_id)
+                )
+                match = match_result.scalars().first()
+
+                if match and match.problem_id:
+                    # Get the problem to find the bucket_path
+                    problem_result = await db.execute(
+                        select(Problem).where(Problem.id == match.problem_id)
+                    )
+                    problem = problem_result.scalars().first()
+
+                    if problem:
+                        msg["problem_id"] = str(match.problem_id)
+                        msg["bucket_path"] = problem.bucket_path
+                        logger.info(
+                            f"Including problem information in match notification: Problem ID {match.problem_id}"
+                        )
+            except Exception as e:
+                logger.error(
+                    f"Error retrieving problem information for match notification: {e}"
+                )
+
     await manager.send_match_notification(uid, msg)
 
 
@@ -241,10 +288,10 @@ async def find_match_for_player(
 
             # Notify both players
             await send_match_notification(
-                user_id, new_match.id, opponent.user_id, new_match.status
+                user_id, new_match.id, opponent.user_id, new_match.status, db
             )
             await send_match_notification(
-                opponent.user_id, new_match.id, user_id, new_match.status
+                opponent.user_id, new_match.id, user_id, new_match.status, db
             )
             return new_match
 

@@ -14,7 +14,7 @@ from src.db.main import init_db
 from src.errors import register_exception_handlers
 from src.match.route import router as match_router
 from src.middleware.rate_limit import RateLimitMiddleware
-from src.problem.route import problem_router
+from src.problem.route import problem_router, testcase_router
 from src.submission.route import submission_router
 
 
@@ -102,6 +102,7 @@ register_exception_handlers(app)
 app.include_router(auth_router, prefix=f"/api/{version}/auth", tags=["auth"])
 app.include_router(match_router, prefix=f"/api/{version}", tags=["match"])
 app.include_router(problem_router, prefix=f"/api/{version}", tags=["problem"])
+app.include_router(testcase_router, prefix=f"/api/{version}", tags=["testcase"])
 app.include_router(submission_router, prefix=f"/api/{version}", tags=["submission"])
 # Log application startup
 logger.info(f"Application startup complete - API version: {version}")

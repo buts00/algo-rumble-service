@@ -5,18 +5,41 @@ from typing import List, Optional
 from pydantic import BaseModel
 
 
+class ProblemExample(BaseModel):
+    """Schema for a problem example"""
+
+    input: str
+    output: str
+    explanation: Optional[str] = None
+
+
+class ProblemDetail(BaseModel):
+    """Schema for problem details"""
+
+    name: str
+    description: str
+    time_limit: str
+    memory_limit: str
+    input_description: str
+    output_description: str
+    examples: List[ProblemExample]
+    constraints: List[str]
+    note: Optional[str] = None
+    difficulty: int
+
+
 class ProblemBase(BaseModel):
     """Base schema for Problem with common attributes"""
 
     rating: int
     topics: List[str]
-    bucket_path: str
+    bucket_path: Optional[str] = None
 
 
 class ProblemCreate(ProblemBase):
     """Schema for creating a new problem"""
 
-    pass
+    problem: ProblemDetail
 
 
 class ProblemUpdate(BaseModel):
@@ -25,6 +48,7 @@ class ProblemUpdate(BaseModel):
     rating: Optional[int] = None
     topics: Optional[List[str]] = None
     bucket_path: Optional[str] = None
+    problem: Optional[ProblemDetail] = None
 
 
 class ProblemResponse(ProblemBase):
@@ -33,6 +57,7 @@ class ProblemResponse(ProblemBase):
     id: uuid.UUID
     created_at: datetime
     updated_at: datetime
+    problem: Optional[ProblemDetail] = None
 
     class Config:
         from_attributes = True
