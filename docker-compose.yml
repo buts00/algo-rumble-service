@@ -43,8 +43,54 @@ services:
         condition: service_healthy
       db_main:
         condition: service_healthy
+      kafka:
+        condition: service_healthy
 
+  match_consumer:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: python -m src.match.consumer
+    env_file:
+      - .env
+    depends_on:
+      redis:
+        condition: service_healthy
+      db_main:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
 
+  zookeeper:
+    image: bitnami/zookeeper:3.8
+    environment:
+      - ALLOW_ANONYMOUS_LOGIN=${ALLOW_ANONYMOUS_LOGIN}
+    ports:
+      - "2181:2181"
+    healthcheck:
+      test: [ "CMD", "zkServer.sh", "status" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  kafka:
+    image: bitnami/kafka:3.5
+    environment:
+      - KAFKA_BROKER_ID=${KAFKA_BROKER_ID}
+      - KAFKA_ZOOKEEPER_CONNECT=${KAFKA_ZOOKEEPER_CONNECT}
+      - KAFKA_LISTENERS=${KAFKA_LISTENERS}
+      - KAFKA_ADVERTISED_LISTENERS=${KAFKA_ADVERTISED_LISTENERS}
+      - ALLOW_PLAINTEXT_LISTENER=${ALLOW_PLAINTEXT_LISTENER}
+    ports:
+      - "9092:9092"
+    depends_on:
+      zookeeper:
+        condition: service_healthy
+    healthcheck:
+      test: [ "CMD", "/opt/bitnami/kafka/bin/kafka-broker-api-versions.sh", "--bootstrap-server", "kafka:9092" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
 volumes:
   algo_rumble_data:

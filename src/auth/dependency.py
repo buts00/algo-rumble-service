@@ -1,11 +1,13 @@
-from abc import abstractmethod, ABC
+from abc import ABC, abstractmethod
 
-from fastapi import Request, Depends, HTTPException, status
-from .util import decode_token
-from src.db.redis import RedisClient
-from .service import UserService
+from fastapi import Depends, HTTPException, Request, status
+
 from src.auth.schemas import UserBaseResponse
+from src.db.redis import RedisClient
+
 from ..db.dependency import get_redis_client
+from .service import UserService
+from .util import decode_token
 
 
 class TokenFromCookie(ABC):

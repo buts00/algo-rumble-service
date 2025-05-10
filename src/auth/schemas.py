@@ -1,6 +1,7 @@
-from enum import Enum
-from pydantic import BaseModel, Field
 import uuid
+from enum import Enum
+
+from pydantic import BaseModel, Field
 
 
 class UserRole(str, Enum):
@@ -24,8 +25,7 @@ class UserModel(UserBase):
     role: UserRole
     rating: int
 
-    class Config:
-        from_attributes = True
+    model_config = {"from_attributes": True}
 
 
 class UserCreateModel(UserBase):
@@ -48,13 +48,11 @@ class UserBaseResponse(BaseModel):
     username: str
     role: UserRole
 
-    class Config:
-        from_attributes = True
+    model_config = {"from_attributes": True}
 
 
 class UserResponseModel(UserBaseResponse):
     rating: int
     country_code: str
 
-    class Config:
-        from_attributes = True
+    model_config = {"from_attributes": True}
