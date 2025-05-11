@@ -67,22 +67,78 @@ def calculate_new_rating(
 async def update_ratings_after_match(
     db: AsyncSession, winner_id: Union[UUID, str], loser_id: Union[UUID, str]
 ) -> Tuple[int, int]:
-    """
-    Update the ratings of two players after a match.
 
-    Args:
-        db: Database session
-        winner_id: ID of the winning player
-        loser_id: ID of the losing player
+    winner, loser, winner_id_str, loser_id_str = await fetch_players_and_validate(db, winner_id, loser_id)
+    if not winner or not loser:
+        return 0, 0
 
-    Returns:
-        A tuple containing the new ratings (winner_rating, loser_rating)
-    """
-    # Convert IDs to strings if they are UUIDs
+    winner_expected = calculate_expected_score(winner.rating, loser.rating)
+    loser_expected = calculate_expected_score(loser.rating, winner.rating)
+
+    new_winner_rating = calculate_new_rating(winner.rating, winner_expected, 1.0)
+    new_loser_rating = calculate_new_rating(loser.rating, loser_expected, 0.0)
+
+    await db.execute(
+        update(User)
+        .where(User.id == winner.id)
+        .values(rating=new_winner_rating)
+        .execution_options(synchronize_session="fetch")
+    )
+    await db.execute(
+        update(User)
+        .where(User.id == loser.id)
+        .values(rating=new_loser_rating)
+        .execution_options(synchronize_session="fetch")
+    )
+    await db.commit()
+
+    logger.info(
+        f"Updated ratings after match: Winner {winner_id_str} ({winner.rating} → {new_winner_rating}), "
+        f"Loser {loser_id_str} ({loser.rating} → {new_loser_rating})"
+    )
+
+    return new_winner_rating, new_loser_rating
+
+
+async def update_ratings_for_draw(
+    db: AsyncSession, player1_id: Union[UUID, str], player2_id: Union[UUID, str]
+) -> Tuple[int, int]:
+
+    player1, player2, id1_str, id2_str = await fetch_players_and_validate(db, player1_id, player2_id)
+    if not player1 or not player2:
+        return 0, 0
+
+    expected1 = calculate_expected_score(player1.rating, player2.rating)
+    expected2 = calculate_expected_score(player2.rating, player1.rating)
+
+    new_rating1 = calculate_new_rating(player1.rating, expected1, 0.5)
+    new_rating2 = calculate_new_rating(player2.rating, expected2, 0.5)
+    await db.execute(
+        update(User)
+        .where(User.id == id1_str)
+        .values(rating=new_rating1)
+        .execution_options(synchronize_session="fetch")
+    )
+    await db.execute(
+        update(User)
+        .where(User.id == id2_str)
+        .values(rating=new_rating2)
+        .execution_options(synchronize_session="fetch")
+    )
+    await db.commit()
+    logger.info(
+        f"Updated ratings after draw: Player1 {id1_str} ({player1.rating} → {new_rating1}), "
+        f"Player2 {id2_str} ({player2.rating} → {new_rating2})"
+    )
+
+    return new_rating1, new_rating2
+
+
+
+async def fetch_players_and_validate(db, winner_id, loser_id):
     winner_id_str = str(winner_id) if isinstance(winner_id, UUID) else winner_id
     loser_id_str = str(loser_id) if isinstance(loser_id, UUID) else loser_id
 
-    # Get current ratings
     winner_result = await db.execute(select(User).where(User.id == winner_id))
     loser_result = await db.execute(select(User).where(User.id == loser_id))
 
@@ -93,102 +149,6 @@ async def update_ratings_after_match(
         logger.error(
             f"Failed to update ratings: User not found (winner_id={winner_id}, loser_id={loser_id})"
         )
-        return None, None
+        return None, None, winner_id_str, loser_id_str
 
-    # Calculate expected scores
-    winner_expected = calculate_expected_score(winner.rating, loser.rating)
-    loser_expected = calculate_expected_score(loser.rating, winner.rating)
-
-    # Calculate new ratings (1 for win, 0 for loss)
-    new_winner_rating = calculate_new_rating(winner.rating, winner_expected, 1.0)
-    new_loser_rating = calculate_new_rating(loser.rating, loser_expected, 0.0)
-
-    # Update ratings in database
-    await db.execute(
-        update(User)
-        .where(User.id == winner_id)
-        .values(rating=new_winner_rating)
-        .execution_options(synchronize_session="fetch")
-    )
-
-    await db.execute(
-        update(User)
-        .where(User.id == loser_id)
-        .values(rating=new_loser_rating)
-        .execution_options(synchronize_session="fetch")
-    )
-
-    await db.commit()
-
-    logger.info(
-        f"Updated ratings after match: "
-        f"Winner {winner_id_str} ({winner.rating} → {new_winner_rating}), "
-        f"Loser {loser_id_str} ({loser.rating} → {new_loser_rating})"
-    )
-
-    return new_winner_rating, new_loser_rating
-
-
-async def update_ratings_for_draw(
-    db: AsyncSession, player1_id: Union[UUID, str], player2_id: Union[UUID, str]
-) -> Tuple[int, int]:
-    """
-    Update the ratings of two players after a draw.
-
-    Args:
-        db: Database session
-        player1_id: ID of the first player
-        player2_id: ID of the second player
-
-    Returns:
-        A tuple containing the new ratings (player1_rating, player2_rating)
-    """
-    # Convert IDs to strings if they are UUIDs
-    player1_id_str = str(player1_id) if isinstance(player1_id, UUID) else player1_id
-    player2_id_str = str(player2_id) if isinstance(player2_id, UUID) else player2_id
-
-    # Get current ratings
-    player1_result = await db.execute(select(User).where(User.id == player1_id))
-    player2_result = await db.execute(select(User).where(User.id == player2_id))
-
-    player1 = player1_result.scalar_one_or_none()
-    player2 = player2_result.scalar_one_or_none()
-
-    if not player1 or not player2:
-        logger.error(
-            f"Failed to update ratings: User not found (player1_id={player1_id}, player2_id={player2_id})"
-        )
-        return None, None
-
-    # Calculate expected scores
-    player1_expected = calculate_expected_score(player1.rating, player2.rating)
-    player2_expected = calculate_expected_score(player2.rating, player1.rating)
-
-    # Calculate new ratings (0.5 for draw)
-    new_player1_rating = calculate_new_rating(player1.rating, player1_expected, 0.5)
-    new_player2_rating = calculate_new_rating(player2.rating, player2_expected, 0.5)
-
-    # Update ratings in database
-    await db.execute(
-        update(User)
-        .where(User.id == player1_id)
-        .values(rating=new_player1_rating)
-        .execution_options(synchronize_session="fetch")
-    )
-
-    await db.execute(
-        update(User)
-        .where(User.id == player2_id)
-        .values(rating=new_player2_rating)
-        .execution_options(synchronize_session="fetch")
-    )
-
-    await db.commit()
-
-    logger.info(
-        f"Updated ratings after draw: "
-        f"Player1 {player1_id_str} ({player1.rating} → {new_player1_rating}), "
-        f"Player2 {player2_id_str} ({player2.rating} → {new_player2_rating})"
-    )
-
-    return new_player1_rating, new_player2_rating
+    return winner, loser, winner_id_str, loser_id_str

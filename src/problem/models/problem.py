@@ -29,11 +29,6 @@ class Problem(SQLModel, table=True):
     # Path to the problem in the Digital Ocean bucket
     bucket_path: str = Field(sa_column=Column(String, nullable=True))
 
-    # Problem details stored as JSON
-    problem_data: Optional[Dict[str, Any]] = Field(
-        sa_column=Column(JSON, nullable=True)
-    )
-
     # Timestamps
     created_at: datetime = Field(default_factory=datetime.now)
     updated_at: datetime = Field(default_factory=datetime.now)

@@ -6,6 +6,9 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
+    # Application
+    ENVIRONMENT: str
+
     # JWT
     JWT_SECRET: str
     JWT_ALGORITHM: str
@@ -22,10 +25,10 @@ class Settings(BaseSettings):
     ALGO_RUMBLE_DB: str
     ALGO_RUMBLE_PASSWORD: str
     ALGO_RUMBLE_PORT: int
-    ALGO_RUMBLE_HOST: str
+    ALGO_RUMBLE_HOST_PROD: str
 
     # Redis
-    REDIS_HOST: str
+    REDIS_HOST_PROD: str
     REDIS_PORT: int
     REDIS_PASSWORD: str
 
@@ -59,11 +62,24 @@ class Settings(BaseSettings):
     # Computed field for ALGO_RUMBLE_DB_URL
     @property
     def ALGO_RUMBLE_DB_URL(self) -> str:
-        return f"{self.POSTGRES_DRIVER}://{self.POSTGRES_USER}:{self.ALGO_RUMBLE_PASSWORD}@{self.ALGO_RUMBLE_HOST}:5432/{self.ALGO_RUMBLE_DB}"
+        return f"{self.POSTGRES_DRIVER}://{self.POSTGRES_USER}:{self.ALGO_RUMBLE_PASSWORD}@{self.ALGO_RUMBLE_HOST}:{self.ALGO_RUMBLE_PORT}/{self.ALGO_RUMBLE_DB}"
 
     @property
     def API_BASE_URL(self) -> str:
         return f"http://{self.API_SERVER_HOST}:{self.API_SERVER_PORT}"
+
+    @property
+    def REDIS_HOST(self) -> str:
+        if self.ENVIRONMENT == "local":
+            return "localhost"
+        return self.REDIS_HOST_PROD
+
+    @property
+    def ALGO_RUMBLE_HOST(self) -> str:
+        if self.ENVIRONMENT == "local":
+            return "localhost"
+        return self.ALGO_RUMBLE_HOST_PROD
+
 
 
 Config = Settings()

@@ -2,7 +2,9 @@ import uuid
 from datetime import datetime
 from typing import List
 
+import boto3
 import requests
+from botocore.exceptions import ClientError
 from fastapi import APIRouter, Depends, Request
 from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
@@ -31,9 +33,9 @@ submission_router = APIRouter(prefix="/submissions", tags=["submissions"])
 
 @submission_router.post("/match")
 async def submit_solution(
-    submission_data: SubmissionCreate,
-    db: Session = Depends(get_session),
-    request: Request = None,
+        submission_data: SubmissionCreate,
+        db: Session = Depends(get_session),
+        request: Request = None,
 ):
     """
     Submit a solution for a match.
@@ -108,7 +110,7 @@ async def submit_solution(
             raise ResourceNotFoundException(detail="Problem not found")
 
         # Fetch test cases from Digital Ocean
-        test_cases = await fetch_test_cases(problem.bucket_path)
+        test_cases = fetch_test_cases(problem.id)
         if not test_cases:
             submission_logger.warning(
                 f"Solution submission failed: No test cases found for problem: ID {match.problem_id}"
@@ -140,8 +142,8 @@ async def submit_solution(
                 winner = player1 if match.winner_id == player1.id else player2
                 loser = player2 if match.winner_id == player1.id else player1
 
-                update_ratings_after_match(winner, loser)
-                await db.commit()
+                await update_ratings_after_match(db, winner.id, loser.id)
+                db.commit()
 
                 submission_logger.info(
                     f"Ratings updated: Winner {winner.username} ({winner.rating}), "
@@ -157,7 +159,7 @@ async def submit_solution(
                     "new_rating": winner.rating,
                 }
                 await send_match_notification(
-                    str(winner.id), custom_message=winner_notification
+                    winner.id, custom_message=winner_notification
                 )
 
                 loser_notification = {
@@ -168,7 +170,7 @@ async def submit_solution(
                     "new_rating": loser.rating,
                 }
                 await send_match_notification(
-                    str(loser.id), custom_message=loser_notification
+                    loser.id, custom_message=loser_notification
                 )
 
             submission_logger.info(
@@ -195,90 +197,59 @@ async def submit_solution(
         )
 
 
-async def fetch_test_cases(bucket_path: str) -> List[dict]:
+def fetch_test_cases(problem_id: str) -> List[dict]:
     """
-    Fetch test cases from Digital Ocean Spaces.
+    Fetch all test cases by listing the test folder and pairing .in/.out files.
 
     Args:
-        bucket_path: The path to the problem in the Digital Ocean bucket
+        problem_id: The id of the problem
 
     Returns:
-        A list of test cases, each containing input and expected output
+        A list of test cases with input and expected output
     """
+    s3 = boto3.client(
+        "s3",
+        endpoint_url=f"https://{Config.AWS_REGION}.digitaloceanspaces.com",
+        aws_access_key_id=Config.AWS_ACCESS_KEY_ID,
+        aws_secret_access_key=Config.AWS_SECRET_ACCESS_KEY,
+    )
+
+    prefix = f"tests/{problem_id}/"
+    bucket_name = Config.AWS_BUCKET_NAME
     test_cases = []
+
     try:
-        # Determine the base URL for test cases
-        base_url = f"https://{Config.AWS_BUCKET_NAME}.{Config.AWS_REGION}.digitaloceanspaces.com/tests"
-        problem_url = f"https://{Config.AWS_BUCKET_NAME}.{Config.AWS_REGION}.digitaloceanspaces.com/problems/{bucket_path}"
-        problem_response = requests.get(problem_url)
-        if problem_response.status_code != 200:
-            submission_logger.error(
-                f"Failed to fetch problem metadata: {problem_response.status_code}"
-            )
-            return []
+        # 1. List all files in the folder
+        response = s3.list_objects_v2(Bucket=bucket_name, Prefix=prefix)
+        files = response.get("Contents", [])
 
-        problem_data = problem_response.json()
-        num_test_cases = problem_data.get("num_test_cases", 0)
+        # 2. Create set of file names (e.g., "01.in", "01.out")
+        file_keys = {f["Key"].replace(prefix, "") for f in files}
+        input_files = {f[:-3] for f in file_keys if f.endswith(".in")}
+        output_files = {f[:-4] for f in file_keys if f.endswith(".out")}
 
-        # If num_test_cases is specified in the problem metadata, use it
-        if num_test_cases > 0:
-            # Fetch the specified number of test cases
-            for i in range(1, num_test_cases + 1):
-                input_url = f"{base_url}/{i:02d}.in"
-                output_url = f"{base_url}/{i:02d}.out"
+        # 3. Get all valid test indices that have both .in and .out
+        valid_indices = sorted(input_files & output_files)
 
-                input_response = requests.get(input_url)
-                output_response = requests.get(output_url)
+        for idx in valid_indices:
+            try:
+                input_obj = s3.get_object(Bucket=bucket_name, Key=f"{prefix}{idx}.in")
+                output_obj = s3.get_object(Bucket=bucket_name, Key=f"{prefix}{idx}.out")
 
-                if (
-                    input_response.status_code == 200
-                    and output_response.status_code == 200
-                ):
-                    test_cases.append(
-                        {
-                            "input": input_response.text,
-                            "expected_output": output_response.text,
-                        }
-                    )
-                else:
-                    submission_logger.warning(
-                        f"Failed to fetch test case {i} for problem {bucket_path}: "
-                        f"Input status {input_response.status_code}, Output status {output_response.status_code}"
-                    )
-        else:
-            # If num_test_cases is not specified, try to fetch test cases sequentially until we get a 404
-            i = 1
-            while True:
-                input_url = f"{base_url}/{i:02d}.in"
-                output_url = f"{base_url}/{i:02d}.out"
+                input_data = input_obj["Body"].read().decode("utf-8")
+                output_data = output_obj["Body"].read().decode("utf-8")
 
-                input_response = requests.get(input_url)
-                output_response = requests.get(output_url)
+                test_cases.append({
+                    "input": input_data,
+                    "expected_output": output_data
+                })
 
-                if (
-                    input_response.status_code != 200
-                    or output_response.status_code != 200
-                ):
-                    break
+            except ClientError as e:
+                submission_logger.warning(f"Failed to fetch test case {idx}: {str(e)}")
 
-                test_cases.append(
-                    {
-                        "input": input_response.text,
-                        "expected_output": output_response.text,
-                    }
-                )
-
-                i += 1
-                if i > 100:  # Safety limit
-                    submission_logger.warning(
-                        f"Reached safety limit of 100 test cases for problem {bucket_path}"
-                    )
-                    break
-
-        submission_logger.info(
-            f"Fetched {len(test_cases)} test cases for problem {bucket_path}"
-        )
+        submission_logger.info(f"Fetched {len(test_cases)} test cases for problem {problem_id}")
         return test_cases
+
     except Exception as e:
         submission_logger.error(f"Error fetching test cases: {str(e)}")
         return []
@@ -318,7 +289,7 @@ async def check_solution(code: str, language: str, test_cases: List[dict]) -> bo
                 ],
             }
 
-            submission_logger.info(f"Running test case {i+1}/{len(test_cases)}")
+            submission_logger.info(f"Running test case {i + 1}/{len(test_cases)}")
             response = requests.post(url, json=payload, headers=headers)
 
             if response.status_code != 200:
@@ -331,8 +302,8 @@ async def check_solution(code: str, language: str, test_cases: List[dict]) -> bo
 
             # Check if there was an error during execution
             if result.get("error"):
-                submission_logger.info(
-                    f"Solution failed on test case {i+1}: Execution error"
+                submission_logger.debug(
+                    f"Solution failed on test case {i + 1}: Execution error"
                 )
                 return False
 
@@ -342,7 +313,7 @@ async def check_solution(code: str, language: str, test_cases: List[dict]) -> bo
 
             if actual_output != expected_output:
                 submission_logger.info(
-                    f"Solution failed on test case {i+1}: Output mismatch"
+                    f"Solution failed on test case {i + 1}: Output mismatch"
                 )
                 submission_logger.debug(
                     f"Expected: '{expected_output}', Actual: '{actual_output}'"

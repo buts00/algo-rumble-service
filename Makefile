@@ -17,7 +17,7 @@ test-cov:
 	pytest --cov=src --cov-report=term --cov-report=html
 
 run:
-	uvicorn src.main:app --reload
+	uvicorn src.main:app --reload --port 8001
 
 build:
 	docker-compose build
