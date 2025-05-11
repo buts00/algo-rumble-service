@@ -313,6 +313,29 @@ async def check_match_timeouts(db: AsyncSession) -> int:
         m.end_time = now
         logger.info(f"Match {m.id} automatically declined due to timeout")
 
+        # Send notifications to both players that the match was declined due to timeout
+        # Notify player1
+        await send_match_notification(
+            m.player1_id,
+            custom_message={
+                "in_match": False,
+                "match_id": str(m.id),
+                "status": MatchStatus.DECLINED,
+                "message": f"Match declined: Player {m.player2_id} did not accept the match in time"
+            }
+        )
+
+        # Notify player2
+        await send_match_notification(
+            m.player2_id,
+            custom_message={
+                "in_match": False,
+                "match_id": str(m.id),
+                "status": MatchStatus.DECLINED,
+                "message": f"Match declined: You did not accept the match in time"
+            }
+        )
+
     if timed_out:
         await db.commit()
     return len(timed_out)

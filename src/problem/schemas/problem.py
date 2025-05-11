@@ -25,7 +25,6 @@ class ProblemDetail(BaseModel):
     examples: List[ProblemExample]
     constraints: List[str]
     note: Optional[str] = None
-    difficulty: int
 
 
 class ProblemBase(BaseModel):
@@ -33,7 +32,6 @@ class ProblemBase(BaseModel):
 
     rating: int
     topics: List[str]
-    bucket_path: Optional[str] = None
 
 
 class ProblemCreate(ProblemBase):
@@ -47,7 +45,6 @@ class ProblemUpdate(BaseModel):
 
     rating: Optional[int] = None
     topics: Optional[List[str]] = None
-    bucket_path: Optional[str] = None
     problem: Optional[ProblemDetail] = None
 
 

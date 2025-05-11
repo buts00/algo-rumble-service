@@ -21,6 +21,7 @@ from src.match.models.match import Match, MatchStatus
 from src.match.rating import update_ratings_after_match
 from src.match.service import send_match_notification
 from src.problem.models.problem import Problem
+from src.submission.schemas import SubmissionCreate
 
 # Create a module-specific logger
 submission_logger = logger.getChild("submission")
@@ -30,10 +31,7 @@ submission_router = APIRouter(prefix="/submissions", tags=["submissions"])
 
 @submission_router.post("/match")
 async def submit_solution(
-    match_id: uuid.UUID,
-    user_id: str,
-    code: str,
-    language: str,
+    submission_data: SubmissionCreate,
     db: Session = Depends(get_session),
     request: Request = None,
 ):
@@ -43,6 +41,11 @@ async def submit_solution(
     If the solution is correct, the match ends instantly and the player who submitted the solution wins.
     Player ratings are updated accordingly.
     """
+    match_id = str(submission_data.match_id)
+    user_id = str(submission_data.user_id)
+    code = submission_data.code
+    language = submission_data.language
+
     submission_logger.info(
         f"Solution submission: Match ID {match_id}, User ID {user_id}, Language: {language}"
     )
@@ -51,6 +54,7 @@ async def submit_solution(
         # Convert user_id to UUID
         try:
             user_uuid = uuid.UUID(user_id)
+            match_uuid = uuid.UUID(match_id)
         except ValueError:
             submission_logger.warning(
                 f"Solution submission failed: Invalid user ID format: {user_id}"
@@ -58,7 +62,7 @@ async def submit_solution(
             raise ResourceNotFoundException(detail="User not found")
 
         # Get the match
-        result = await db.execute(select(Match).where(Match.id == match_id))
+        result = await db.execute(select(Match).where(Match.id == match_uuid))
         match = result.scalars().first()
 
         if not match:
@@ -204,12 +208,8 @@ async def fetch_test_cases(bucket_path: str) -> List[dict]:
     test_cases = []
     try:
         # Determine the base URL for test cases
-        base_url = (
-            f"https://algo-rumble.fra1.cdn.digitaloceanspaces.com/tests/{bucket_path}"
-        )
-
-        # Fetch problem metadata to determine number of test cases
-        problem_url = f"https://algo-rumble.fra1.cdn.digitaloceanspaces.com/problems/{bucket_path}.json"
+        base_url = f"https://{Config.AWS_BUCKET_NAME}.{Config.AWS_REGION}.digitaloceanspaces.com/tests"
+        problem_url = f"https://{Config.AWS_BUCKET_NAME}.{Config.AWS_REGION}.digitaloceanspaces.com/problems/{bucket_path}"
         problem_response = requests.get(problem_url)
         if problem_response.status_code != 200:
             submission_logger.error(

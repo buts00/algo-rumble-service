@@ -14,10 +14,10 @@ def get_s3_client():
     session = boto3.session.Session()
     return session.client(
         "s3",
-        region_name="fra1",  # Frankfurt region
-        endpoint_url="https://fra1.digitaloceanspaces.com",
-        aws_access_key_id=AppConfig.DIGITAL_OCEAN_ACCESS_KEY_ID,
-        aws_secret_access_key=AppConfig.DIGITAL_OCEAN_API_KEY,
+        endpoint_url=AppConfig.AWS_ENDPOINT_URL,
+        region_name=AppConfig.AWS_REGION,
+        aws_access_key_id=AppConfig.AWS_ACCESS_KEY_ID,
+        aws_secret_access_key=AppConfig.AWS_SECRET_ACCESS_KEY,
         config=Config(signature_version="s3v4"),
     )
 
@@ -39,7 +39,7 @@ def upload_problem_to_s3(problem_id: str, problem_data: Dict[str, Any]) -> str:
     problem_json = json.dumps(problem_data)
 
     # Upload to DigitalOcean Spaces
-    bucket_name = AppConfig.DIGITAL_OCEAN_BUCKET_NAME
+    bucket_name = AppConfig.AWS_BUCKET_NAME
     file_path = f"problems/{problem_id}.json"
 
     s3_client.put_object(
@@ -69,7 +69,7 @@ def upload_testcase_to_s3(
         Dictionary with paths to the uploaded input and output files
     """
     s3_client = get_s3_client()
-    bucket_name = AppConfig.DIGITAL_OCEAN_BUCKET_NAME
+    bucket_name = AppConfig.AWS_BUCKET_NAME
 
     # Upload input file
     input_path = f"tests/{problem_id}/{testcase_number}.in"
