@@ -10,6 +10,7 @@ from aiokafka.admin import AIOKafkaAdminClient, NewTopic
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.auth.model import User
 from src.config import Config
 from src.match.models.match import Match, MatchStatus
 from src.match.schemas.queue import MatchQueueResult, PlayerQueueEntry
@@ -122,7 +123,7 @@ async def add_player_to_queue(
 async def send_match_notification(
     user_id: Union[UUID, int],
     match_id: Union[UUID, int] = None,
-    opponent_id: Union[UUID, int] = None,
+    opponent_id: Union[UUID, int] = None,  # залишаємо для сумісності, але не обов'язково
     status: str = None,
     db: AsyncSession = None,
     custom_message: dict = None,
@@ -138,47 +139,52 @@ async def send_match_notification(
         db: Database session (optional)
         custom_message: A custom message to send (optional)
     """
-    # Ensure we use string keys for manager
     uid = str(user_id)
 
     if custom_message is not None:
-        # Use the custom message directly
         msg = custom_message
     else:
-        # Create a standard match notification
         msg = {
             "in_match": True,
             "match_id": str(match_id),
             "status": status,
-            "opponent_id": str(opponent_id),
         }
 
-        # If match is active and we have a database session, include problem information
-        if status == MatchStatus.ACTIVE and db is not None:
+        opponent_username = None
+
+        if db is not None and match_id is not None:
             try:
-                # Get the match to find the problem_id
-                match_result = await db.execute(
-                    select(Match).where(Match.id == match_id)
-                )
+                match_result = await db.execute(select(Match).where(Match.id == match_id))
                 match = match_result.scalars().first()
 
-                if match and match.problem_id:
-                    # Get the problem to find the bucket_path
-                    problem_result = await db.execute(
-                        select(Problem).where(Problem.id == match.problem_id)
-                    )
-                    problem = problem_result.scalars().first()
+                if match:
+                    user_uuid = UUID(str(user_id))  # ensure correct format
 
-                    if problem:
-                        msg["problem_id"] = str(match.problem_id)
-                        msg["bucket_path"] = problem.bucket_path
-                        logger.info(
-                            f"Including problem information in match notification: Problem ID {match.problem_id}"
+                    # Визначаємо справжнього опонента
+                    opponent_id = (
+                        match.player2_id if match.player1_id == user_uuid else match.player1_id
+                    )
+                    msg["opponent_id"] = str(opponent_id)
+
+                    # Шукаємо username опонента
+                    user_result = await db.execute(select(User).where(User.id == opponent_id))
+                    opponent = user_result.scalars().first()
+                    if opponent:
+                        opponent_username = opponent.username
+                        msg["opponent_username"] = opponent_username
+
+                    # Якщо матч активний — додаємо інфу про задачу
+                    if status == MatchStatus.ACTIVE and match.problem_id:
+                        problem_result = await db.execute(
+                            select(Problem).where(Problem.id == match.problem_id)
                         )
+                        problem = problem_result.scalars().first()
+                        if problem:
+                            msg["problem_id"] = str(match.problem_id)
+                            msg["bucket_path"] = problem.bucket_path
+
             except Exception as e:
-                logger.error(
-                    f"Error retrieving problem information for match notification: {e}"
-                )
+                logger.error(f"Error retrieving match/opponent/problem info: {e}")
 
     await manager.send_match_notification(uid, msg)
 
@@ -186,7 +192,6 @@ async def send_match_notification(
 async def find_match_for_player(
     db: AsyncSession, user_id: Union[UUID, int], rating: int
 ) -> Optional[Match]:
-    # Check existing match
     stmt = (
         select(Match)
         .where(
@@ -313,28 +318,30 @@ async def check_match_timeouts(db: AsyncSession) -> int:
         m.end_time = now
         logger.info(f"Match {m.id} automatically declined due to timeout")
 
-        # Send notifications to both players that the match was declined due to timeout
-        # Notify player1
-        await send_match_notification(
-            m.player1_id,
-            custom_message={
-                "in_match": False,
-                "match_id": str(m.id),
-                "status": MatchStatus.DECLINED,
-                "message": f"Match declined: Player {m.player2_id} did not accept the match in time"
-            }
-        )
+        # Get usernames for both players
+        player1_result = await db.execute(select(User).where(User.id == m.player1_id))
+        player1 = player1_result.scalars().first()
+        player1_username = player1.username if player1 else "Unknown"
 
-        # Notify player2
-        await send_match_notification(
-            m.player2_id,
-            custom_message={
-                "in_match": False,
-                "match_id": str(m.id),
-                "status": MatchStatus.DECLINED,
-                "message": f"Match declined: You did not accept the match in time"
-            }
-        )
+        player2_result = await db.execute(select(User).where(User.id == m.player2_id))
+        player2 = player2_result.scalars().first()
+        player2_username = player2.username if player2 else "Unknown"
+
+        # Determine which player(s) didn't accept
+        player1_didnt_accept = not m.player1_accepted
+        player2_didnt_accept = not m.player2_accepted
+
+        # Create simplified message with only the required fields
+        match_status_msg = {
+            "player1_id": str(m.player1_id),
+            "player1_accepted": m.player1_accepted,
+            "player2_id": str(m.player2_id),
+            "player2_accepted": m.player2_accepted
+        }
+
+        # Send notifications to both players
+        await send_match_notification(m.player1_id, custom_message=match_status_msg)
+        await send_match_notification(m.player2_id, custom_message=match_status_msg)
 
     if timed_out:
         await db.commit()

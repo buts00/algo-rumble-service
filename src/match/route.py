@@ -184,15 +184,26 @@ async def get_queue_status(
             opponent_id = (
                 match.player2_id if match.player1_id == user_uuid else match.player1_id
             )
+            try:
+                result = await db.execute(select(User).where(User.id == opponent_id))
+                opponent = result.scalars().first()
+                opponent_username = opponent.username if opponent else "Unknown"
+            except SQLAlchemyError as db_error:
+                match_logger.error(f"Database error during opponent lookup: {str(db_error)}")
+                raise DatabaseException(
+                    detail="Failed to retrieve opponent information"
+                )
+
             match_logger.info(
                 f"Match found for user ID {user_uuid}: Match ID {match.id}, "
-                f"Status {match.status}, Opponent ID {opponent_id}"
+                f"Status {match.status}, Opponent ID {opponent_id}, Username {opponent_username}"
             )
             return {
                 "in_match": True,
-                "match_id": match.id,
+                "match_id": str(match.id),
                 "status": match.status,
                 "opponent_id": str(opponent_id),
+                "opponent_username": opponent_username,
             }
 
         match_logger.info(f"No active match found for user ID: {user_uuid}")
@@ -370,13 +381,30 @@ async def accept_match(
             await db.commit()
             await db.refresh(match)
 
-            # Notify the other player about the acceptance
-            other_player_id = (
-                match.player2_id if match.player1_id == user_uuid else match.player1_id
-            )
-            await send_match_notification(
-                other_player_id, match.id, user_uuid, match.status, db
-            )
+            # Determine which player accepted and prepare appropriate messages
+            is_first_player = match.player1_id == user_uuid
+            other_player_id = match.player2_id if is_first_player else match.player1_id
+
+            # Get usernames for both players
+            current_user_result = await db.execute(select(User).where(User.id == user_uuid))
+            current_user = current_user_result.scalars().first()
+            current_username = current_user.username if current_user else "Unknown"
+
+            other_user_result = await db.execute(select(User).where(User.id == other_player_id))
+            other_user = other_user_result.scalars().first()
+            other_username = other_user.username if other_user else "Unknown"
+
+            # Create simplified message with only the required fields
+            match_status_msg = {
+                "player1_id": str(match.player1_id),
+                "player1_accepted": match.player1_accepted,
+                "player2_id": str(match.player2_id),
+                "player2_accepted": match.player2_accepted
+            }
+
+            # Notify both players about the match status
+            await send_match_notification(user_uuid, custom_message=match_status_msg)
+            await send_match_notification(other_player_id, custom_message=match_status_msg)
         except SQLAlchemyError as db_error:
             match_logger.error(
                 f"Database error during match status update: {str(db_error)}"

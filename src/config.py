@@ -80,6 +80,12 @@ class Settings(BaseSettings):
             return "localhost"
         return self.ALGO_RUMBLE_HOST_PROD
 
+    @property
+    def ALGO_RUMBLE_PORT(self) -> str:
+        if self.ENVIRONMENT == "local":
+            return "5435"
+        return self.ALGO_RUMBLE_PORT
+
 
 
 Config = Settings()
