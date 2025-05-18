@@ -9,15 +9,11 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 
-from src.auth.route import auth_router
+from src.presentation.routes import auth_router, match_router, problem_router, testcase_router, submission_router
 from src.config import logger
-from src.db.dependency import get_redis_client
-from src.db.main import init_db
+from src.data.repositories import get_redis_client, init_db
 from src.errors import register_exception_handlers
-from src.match.route import router as match_router
-from src.middleware.rate_limit import RateLimitMiddleware
-from src.problem.route import problem_router, testcase_router
-from src.submission.route import submission_router
+from src.presentation.middleware.rate_limit import RateLimitMiddleware
 
 
 class LoggingMiddleware(BaseHTTPMiddleware):
