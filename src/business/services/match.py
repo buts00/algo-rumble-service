@@ -21,14 +21,17 @@ match_logger = logger.getChild("match")
 player_queue: List[PlayerQueueEntry] = []
 
 
-async def add_player_to_queue(user_id: uuid.UUID, rating: int) -> None:
+async def add_player_to_queue(user_id: uuid.UUID, rating: int) -> bool:
     """
     Add a player to the matchmaking queue.
-
-    Args:
-        user_id: The ID of the player
-        rating: The player's current rating
+    Returns True if added, False if already in queue.
     """
+    # Check if user is already in the queue
+    for entry in player_queue:
+        if entry.user_id == user_id:
+            match_logger.info(f"Player {user_id} is already in the queue.")
+            return False
+
     # Create a queue entry
     entry = PlayerQueueEntry(
         user_id=user_id, rating=rating, timestamp=datetime.utcnow()
@@ -39,6 +42,7 @@ async def add_player_to_queue(user_id: uuid.UUID, rating: int) -> None:
     match_logger.info(
         f"Player {user_id} added to queue. Queue size: {len(player_queue)}"
     )
+    return True
 
 
 async def process_match_queue(
@@ -119,7 +123,7 @@ async def process_match_queue(
                 await send_match_notification(
                     str(player1.user_id),
                     {
-                        "type": "match_found",
+                        "status": "match_found",
                         "match_id": str(new_match.id),
                         "opponent_username": user2.username if user2 else "",
                         "problem_id": str(problem_id) if problem_id else None,
@@ -128,7 +132,7 @@ async def process_match_queue(
                 await send_match_notification(
                     str(player2.user_id),
                     {
-                        "type": "match_found",
+                        "status": "match_found",
                         "match_id": str(new_match.id),
                         "opponent_username": user1.username if user1 else "",
                         "problem_id": str(problem_id) if problem_id else None,
@@ -238,7 +242,7 @@ async def cancel_expired_matches(db: Session) -> None:
             await send_match_notification(
                 str(match.player1_id),
                 {
-                    "type": "match_cancelled",
+                    "status": "match_cancelled",
                     "match_id": str(match.id),
                     "reason": "Match expired",
                 },
@@ -247,7 +251,7 @@ async def cancel_expired_matches(db: Session) -> None:
             await send_match_notification(
                 str(match.player2_id),
                 {
-                    "type": "match_cancelled",
+                    "status": "match_cancelled",
                     "match_id": str(match.id),
                     "reason": "Match expired",
                 },

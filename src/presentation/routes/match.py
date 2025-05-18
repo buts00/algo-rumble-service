@@ -48,9 +48,11 @@ async def send_accept_status(match, db: AsyncSession):
     result2 = await db.execute(select(User).where(User.id == match.player2_id))
     player2 = result2.scalar_one_or_none()
     data = {
-        "type": "match_accept_status",
+        "status": "match_accept_status",
+        "player1_id": str(player1.id) if player1 else "",
         "player1_username": player1.username if player1 else "",
         "player1_accepted": bool(match.player1_accepted),
+        "player2_id": str(player2.id) if player2 else "",
         "player2_username": player2.username if player2 else "",
         "player2_accepted": bool(match.player2_accepted),
     }
@@ -82,7 +84,7 @@ async def match_acceptance_timeout(match_id: str, db: AsyncSession):
             await send_match_notification(
                 str(user.id),
                 {
-                    "type": "match_cancelled",
+                    "status": "match_cancelled",
                     "match_id": str(match.id),
                     "reason": (
                         f"User '{other.username}' did not accept in time"
@@ -116,7 +118,7 @@ async def match_draw_timeout(match_id: str, db: AsyncSession):
             await send_match_notification(
                 str(user.id),
                 {
-                    "type": "match_draw",
+                    "status": "match_draw",
                     "match_id": str(match.id),
                     "message": "Match ended in a draw. No one submitted a correct solution in 45 minutes.",
                 },
@@ -179,8 +181,14 @@ async def find_match(
                 detail="You already have an active or pending match"
             )
 
-        # Add player to queue
-        await add_player_to_queue(user_uuid, user.rating)
+        # Add player to queue (returns True if added, False if already in queue)
+        added = await add_player_to_queue(user_uuid, user.rating)
+        if not added:
+            match_logger.info(f"User {user_id} is already searching for a match.")
+            return {
+                "status": "already_searching",
+                "message": "You are already searching for a match"
+            }
         match_logger.info(f"User added to match queue: {user_id}")
 
         # Process match queue in background, pass the timeout callback
@@ -290,7 +298,7 @@ async def accept_match(
                 await send_match_notification(
                     str(match.player1_id),
                     {
-                        "type": "match_started",
+                        "status": "match_started",
                         "match_id": str(match.id),
                         "opponent_username": player2.username if player2 else "",
                         "problem_id": str(match.problem_id),
@@ -299,7 +307,7 @@ async def accept_match(
                 await send_match_notification(
                     str(match.player2_id),
                     {
-                        "type": "match_started",
+                        "status": "match_started",
                         "match_id": str(match.id),
                         "opponent_username": player1.username if player1 else "",
                         "problem_id": str(match.problem_id),
@@ -410,7 +418,7 @@ async def decline_match(
         await send_match_notification(
             other_player_id,
             {
-                "type": "match_declined",
+                "status": "match_declined",
                 "match_id": str(match.id),
                 "declined_by": str(user_uuid),
             },
@@ -780,7 +788,7 @@ async def complete_match(
         await send_match_notification(
             str(match.player1_id),
             {
-                "type": "match_completed",
+                "status": "match_completed",
                 "match_id": str(match.id),
                 "winner_id": str(match.winner_id),
                 "new_rating": player1.rating,
@@ -790,7 +798,7 @@ async def complete_match(
         await send_match_notification(
             str(match.player2_id),
             {
-                "type": "match_completed",
+                "status": "match_completed",
                 "match_id": str(match.id),
                 "winner_id": str(match.winner_id),
                 "new_rating": player2.rating,
@@ -863,7 +871,7 @@ async def notify_match_found(match, user_id, opponent_id, db: AsyncSession):
         await send_match_notification(
             user_id,
             {
-                "type": "match_found",
+                "status": "match_found",
                 "match_id": str(match.id),
                 "opponent_username": opponent.username if opponent else "",
                 "problem_id": str(match.problem_id),
