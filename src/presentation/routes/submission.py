@@ -32,9 +32,9 @@ submission_router = APIRouter(prefix="/submissions", tags=["submissions"])
 
 @submission_router.post("/match")
 async def submit_solution(
-        submission_data: SubmissionCreate,
-        db: Session = Depends(get_session),
-        request: Request = None,
+    submission_data: SubmissionCreate,
+    db: Session = Depends(get_session),
+    request: Request = None,
 ):
     """
     Submit a solution for a match.

@@ -31,7 +31,8 @@ from src.business.services.match_rating import update_ratings_after_match
 from src.business.services.match import (
     add_player_to_queue,
     process_match_queue,
-    send_match_notification, capitulate_match_logic,
+    send_match_notification,
+    capitulate_match_logic,
 )
 from src.presentation.websocket import manager  # <-- Add this import
 
@@ -187,7 +188,7 @@ async def find_match(
             match_logger.info(f"User {user_id} is already searching for a match.")
             return {
                 "status": "already_searching",
-                "message": "You are already searching for a match"
+                "message": "You are already searching for a match",
             }
         match_logger.info(f"User added to match queue: {user_id}")
 
@@ -882,6 +883,7 @@ async def notify_match_found(match, user_id, opponent_id, db: AsyncSession):
             f"Not sending match_found notification due to missing match_id/problem_id: "
             f"match_id={match.id}, problem_id={match.problem_id}, user_id={user_id}, opponent_id={opponent_id}"
         )
+
 
 @router.post("/capitulate")
 async def capitulate_match(
