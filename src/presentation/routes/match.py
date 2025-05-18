@@ -48,8 +48,10 @@ async def send_accept_status(match, db: AsyncSession):
     player2 = result2.scalar_one_or_none()
     data = {
         "status": "match_accept_status",
+        "player1_id": str(player1.id) if player1 else "",
         "player1_username": player1.username if player1 else "",
         "player1_accepted": bool(match.player1_accepted),
+        "player2_id": str(player2.id) if player2 else "",
         "player2_username": player2.username if player2 else "",
         "player2_accepted": bool(match.player2_accepted),
     }
