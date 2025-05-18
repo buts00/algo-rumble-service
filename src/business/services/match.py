@@ -302,7 +302,7 @@ async def capitulate_match_logic(db, match_id: uuid.UUID, loser_id: uuid.UUID):
     await manager.send_match_notification(
         str(winner.id),
         {
-            "type": "match_completed",
+            "status": "match_completed",
             "match_id": str(match.id),
             "message": "Congratulations! You won the match as your opponent surrendered.",
             "problem_id": str(match.problem_id),
@@ -316,7 +316,7 @@ async def capitulate_match_logic(db, match_id: uuid.UUID, loser_id: uuid.UUID):
     await manager.send_match_notification(
         str(loser.id),
         {
-            "type": "match_completed",
+            "status": "match_completed",
             "message": f"You surrendered the match. '{winner.username}' is declared the winner.",
             "match_id": str(match.id),
             "problem_id": str(match.problem_id),
