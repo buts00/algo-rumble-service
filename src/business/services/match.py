@@ -121,7 +121,7 @@ async def process_match_queue(
                 await send_match_notification(
                     str(player1.user_id),
                     {
-                        "type": "match_found",
+                        "status": "match_found",
                         "match_id": str(new_match.id),
                         "opponent_username": user2.username if user2 else "",
                         "problem_id": str(problem_id) if problem_id else None,
@@ -130,7 +130,7 @@ async def process_match_queue(
                 await send_match_notification(
                     str(player2.user_id),
                     {
-                        "type": "match_found",
+                        "status": "match_found",
                         "match_id": str(new_match.id),
                         "opponent_username": user1.username if user1 else "",
                         "problem_id": str(problem_id) if problem_id else None,
@@ -240,7 +240,7 @@ async def cancel_expired_matches(db: Session) -> None:
             await send_match_notification(
                 str(match.player1_id),
                 {
-                    "type": "match_cancelled",
+                    "status": "match_cancelled",
                     "match_id": str(match.id),
                     "reason": "Match expired",
                 },
@@ -249,7 +249,7 @@ async def cancel_expired_matches(db: Session) -> None:
             await send_match_notification(
                 str(match.player2_id),
                 {
-                    "type": "match_cancelled",
+                    "status": "match_cancelled",
                     "match_id": str(match.id),
                     "reason": "Match expired",
                 },

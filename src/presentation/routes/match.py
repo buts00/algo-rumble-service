@@ -47,7 +47,7 @@ async def send_accept_status(match, db: AsyncSession):
     result2 = await db.execute(select(User).where(User.id == match.player2_id))
     player2 = result2.scalar_one_or_none()
     data = {
-        "type": "match_accept_status",
+        "status": "match_accept_status",
         "player1_username": player1.username if player1 else "",
         "player1_accepted": bool(match.player1_accepted),
         "player2_username": player2.username if player2 else "",
@@ -81,7 +81,7 @@ async def match_acceptance_timeout(match_id: str, db: AsyncSession):
             await send_match_notification(
                 str(user.id),
                 {
-                    "type": "match_cancelled",
+                    "status": "match_cancelled",
                     "match_id": str(match.id),
                     "reason": (
                         f"User '{other.username}' did not accept in time"
@@ -115,7 +115,7 @@ async def match_draw_timeout(match_id: str, db: AsyncSession):
             await send_match_notification(
                 str(user.id),
                 {
-                    "type": "match_draw",
+                    "status": "match_draw",
                     "match_id": str(match.id),
                     "message": "Match ended in a draw. No one submitted a correct solution in 45 minutes.",
                 },
@@ -295,7 +295,7 @@ async def accept_match(
                 await send_match_notification(
                     str(match.player1_id),
                     {
-                        "type": "match_started",
+                        "status": "match_started",
                         "match_id": str(match.id),
                         "opponent_username": player2.username if player2 else "",
                         "problem_id": str(match.problem_id),
@@ -304,7 +304,7 @@ async def accept_match(
                 await send_match_notification(
                     str(match.player2_id),
                     {
-                        "type": "match_started",
+                        "status": "match_started",
                         "match_id": str(match.id),
                         "opponent_username": player1.username if player1 else "",
                         "problem_id": str(match.problem_id),
@@ -415,7 +415,7 @@ async def decline_match(
         await send_match_notification(
             other_player_id,
             {
-                "type": "match_declined",
+                "status": "match_declined",
                 "match_id": str(match.id),
                 "declined_by": str(user_uuid),
             },
@@ -785,7 +785,7 @@ async def complete_match(
         await send_match_notification(
             str(match.player1_id),
             {
-                "type": "match_completed",
+                "status": "match_completed",
                 "match_id": str(match.id),
                 "winner_id": str(match.winner_id),
                 "new_rating": player1.rating,
@@ -795,7 +795,7 @@ async def complete_match(
         await send_match_notification(
             str(match.player2_id),
             {
-                "type": "match_completed",
+                "status": "match_completed",
                 "match_id": str(match.id),
                 "winner_id": str(match.winner_id),
                 "new_rating": player2.rating,
@@ -868,7 +868,7 @@ async def notify_match_found(match, user_id, opponent_id, db: AsyncSession):
         await send_match_notification(
             user_id,
             {
-                "type": "match_found",
+                "status": "match_found",
                 "match_id": str(match.id),
                 "opponent_username": opponent.username if opponent else "",
                 "problem_id": str(match.problem_id),
