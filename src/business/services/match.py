@@ -48,6 +48,24 @@ async def add_player_to_queue(user_id: uuid.UUID, rating: int) -> bool:
     return True
 
 
+async def remove_player_from_queue(user_id: uuid.UUID) -> bool:
+    """
+    Remove a player from the matchmaking queue.
+    Returns True if removed, False if not found.
+    """
+    global player_queue
+    initial_len = len(player_queue)
+    player_queue = [entry for entry in player_queue if entry.user_id != user_id]
+    removed = len(player_queue) < initial_len
+    if removed:
+        match_logger.info(
+            f"Player {user_id} removed from queue. Queue size: {len(player_queue)}"
+        )
+    else:
+        match_logger.info(f"Player {user_id} not found in queue for removal.")
+    return removed
+
+
 async def process_match_queue(
     db: Session, match_acceptance_timeout_cb=None, match_draw_timeout_cb=None
 ) -> None:

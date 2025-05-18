@@ -33,6 +33,7 @@ from src.business.services.match import (
     process_match_queue,
     send_match_notification,
     capitulate_match_logic,
+    remove_player_from_queue,  # додати імпорт
 )
 from src.presentation.websocket import manager  # <-- Add this import
 
@@ -896,3 +897,29 @@ async def capitulate_match(
     except Exception as e:
         logger.error(f"Failed to capitulate match: {e}")
         raise BadRequestException("Could not capitulate match.")
+
+
+@router.post("/cancel_find")
+async def cancel_find_match(
+    request_data: FindMatchRequest,
+):
+    """
+    Cancel matchmaking search for a user (remove from queue).
+    """
+    user_id = request_data.user_id
+    match_logger.info(f"Cancel find request for user ID: {user_id}")
+
+    try:
+        user_uuid = uuid.UUID(user_id)
+    except ValueError:
+        match_logger.warning(f"Cancel find failed: Invalid user ID format: {user_id}")
+        raise BadRequestException(detail="Invalid user ID format")
+
+    removed = await remove_player_from_queue(user_uuid)
+    if removed:
+        return {
+            "status": "cancelled",
+            "message": "You have been removed from the match queue",
+        }
+    else:
+        return {"status": "not_found", "message": "You were not in the match queue"}
