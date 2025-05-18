@@ -52,7 +52,7 @@ class Settings(BaseSettings):
     # Logging
     LOG_LEVEL: str = "INFO"
     LOG_FILE: str = "logs/app.log"
-    
+
     MATCH_ACCEPT_TIMEOUT_SECONDS: int = Field(30, env="MATCH_ACCEPT_TIMEOUT_SECONDS")
     MATCH_DURATION_SECONDS: int = Field(60, env="MATCH_DURATION_SECONDS")
 

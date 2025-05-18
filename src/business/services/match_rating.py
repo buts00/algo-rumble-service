@@ -68,7 +68,9 @@ async def update_ratings_after_match(
     db: AsyncSession, winner_id: Union[UUID, str], loser_id: Union[UUID, str]
 ) -> Tuple[int, int]:
 
-    winner, loser, winner_id_str, loser_id_str = await fetch_players_and_validate(db, winner_id, loser_id)
+    winner, loser, winner_id_str, loser_id_str = await fetch_players_and_validate(
+        db, winner_id, loser_id
+    )
     if not winner or not loser:
         return 0, 0
 
@@ -104,7 +106,9 @@ async def update_ratings_for_draw(
     db: AsyncSession, player1_id: Union[UUID, str], player2_id: Union[UUID, str]
 ) -> Tuple[int, int]:
 
-    player1, player2, id1_str, id2_str = await fetch_players_and_validate(db, player1_id, player2_id)
+    player1, player2, id1_str, id2_str = await fetch_players_and_validate(
+        db, player1_id, player2_id
+    )
     if not player1 or not player2:
         return 0, 0
 
@@ -132,7 +136,6 @@ async def update_ratings_for_draw(
     )
 
     return new_rating1, new_rating2
-
 
 
 async def fetch_players_and_validate(db, winner_id, loser_id):

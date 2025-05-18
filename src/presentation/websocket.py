@@ -25,7 +25,9 @@ class WebSocketManager:
         if user_id not in self.active_connections:
             self.active_connections[user_id] = []
         self.active_connections[user_id].append(websocket)
-        logger.info(f"WebSocket connected for user {user_id}. Total connections: {len(self.active_connections[user_id])}")
+        logger.info(
+            f"WebSocket connected for user {user_id}. Total connections: {len(self.active_connections[user_id])}"
+        )
 
     def disconnect(self, websocket: WebSocket, user_id: str):
         """
@@ -34,12 +36,16 @@ class WebSocketManager:
         if user_id in self.active_connections:
             if websocket in self.active_connections[user_id]:
                 self.active_connections[user_id].remove(websocket)
-                logger.info(f"WebSocket disconnected for user {user_id}. Remaining connections: {len(self.active_connections[user_id])}")
-            
+                logger.info(
+                    f"WebSocket disconnected for user {user_id}. Remaining connections: {len(self.active_connections[user_id])}"
+                )
+
             # Clean up if no more connections for this user
             if not self.active_connections[user_id]:
                 del self.active_connections[user_id]
-                logger.info(f"No more connections for user {user_id}. Removed from active connections.")
+                logger.info(
+                    f"No more connections for user {user_id}. Removed from active connections."
+                )
 
     async def send_match_notification(self, user_id: str, message: Any):
         """
@@ -52,9 +58,11 @@ class WebSocketManager:
                     await websocket.send_json(message)
                     logger.debug(f"Notification sent to user {user_id}")
                 except Exception as e:
-                    logger.error(f"Error sending notification to user {user_id}: {str(e)}")
+                    logger.error(
+                        f"Error sending notification to user {user_id}: {str(e)}"
+                    )
                     disconnected_websockets.append(websocket)
-            
+
             # Clean up any disconnected websockets
             for websocket in disconnected_websockets:
                 self.disconnect(websocket, user_id)

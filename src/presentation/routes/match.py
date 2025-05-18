@@ -1,7 +1,6 @@
 import asyncio
 import uuid
-from datetime import datetime, timedelta
-from typing import List
+from datetime import datetime
 
 from fastapi import (
     APIRouter,
@@ -13,7 +12,6 @@ from fastapi import (
 )
 from sqlalchemy import or_, select
 from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy.orm import Session
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.data.schemas import User
@@ -29,8 +27,11 @@ from src.errors import (
 
 from src.data.schemas import AcceptMatchRequest, FindMatchRequest, Match, MatchStatus
 from src.business.services.match_rating import update_ratings_after_match
-from src.data.schemas.match_schemas.match import MatchResponse
-from src.business.services.match import add_player_to_queue, process_match_queue, send_match_notification
+from src.business.services.match import (
+    add_player_to_queue,
+    process_match_queue,
+    send_match_notification,
+)
 from src.presentation.websocket import manager  # <-- Add this import
 
 # Create a module-specific logger
@@ -54,6 +55,7 @@ async def send_accept_status(match, db: AsyncSession):
     }
     await send_match_notification(str(match.player1_id), data)
     await send_match_notification(str(match.player2_id), data)
+
 
 async def match_acceptance_timeout(match_id: str, db: AsyncSession):
     await asyncio.sleep(Config.MATCH_ACCEPT_TIMEOUT_SECONDS)
@@ -81,9 +83,19 @@ async def match_acceptance_timeout(match_id: str, db: AsyncSession):
                 {
                     "type": "match_cancelled",
                     "match_id": str(match.id),
-                    "reason": f"User '{other.username}' did not accept in time" if other and not (match.player1_accepted if user == player1 else match.player2_accepted) else "You did not accept in time",
+                    "reason": (
+                        f"User '{other.username}' did not accept in time"
+                        if other
+                        and not (
+                            match.player1_accepted
+                            if user == player1
+                            else match.player2_accepted
+                        )
+                        else "You did not accept in time"
+                    ),
                 },
             )
+
 
 async def match_draw_timeout(match_id: str, db: AsyncSession):
     await asyncio.sleep(Config.MATCH_DURATION_SECONDS)
@@ -171,7 +183,9 @@ async def find_match(
         match_logger.info(f"User added to match queue: {user_id}")
 
         # Process match queue in background, pass the timeout callback
-        background_tasks.add_task(process_match_queue, db, match_acceptance_timeout, match_draw_timeout)
+        background_tasks.add_task(
+            process_match_queue, db, match_acceptance_timeout, match_draw_timeout
+        )
 
         return {"status": "queued", "message": "You have been added to the match queue"}
     except (
@@ -225,7 +239,9 @@ async def accept_match(
         result = await db.execute(select(Match).where(Match.id == match_uuid))
         match = result.scalars().first()
         if not match:
-            match_logger.warning(f"Match acceptance failed: Match not found: {match_id}")
+            match_logger.warning(
+                f"Match acceptance failed: Match not found: {match_id}"
+            )
             raise ResourceNotFoundException(detail="Match not found")
 
         # Check if user is part of the match
@@ -262,9 +278,13 @@ async def accept_match(
             # Notify both players only if match_id and problem_id are valid
             if match.id and match.problem_id:
                 # Get usernames
-                result1 = await db.execute(select(User).where(User.id == match.player1_id))
+                result1 = await db.execute(
+                    select(User).where(User.id == match.player1_id)
+                )
                 player1 = result1.scalar_one_or_none()
-                result2 = await db.execute(select(User).where(User.id == match.player2_id))
+                result2 = await db.execute(
+                    select(User).where(User.id == match.player2_id)
+                )
                 player2 = result2.scalar_one_or_none()
                 await send_match_notification(
                     str(match.player1_id),
@@ -287,7 +307,9 @@ async def accept_match(
                 # Start 45-min draw timer
                 background_tasks.add_task(match_draw_timeout, str(match.id), db)
             else:
-                match_logger.warning(f"Not sending match_started notification due to missing match_id/problem_id: match_id={match.id}, problem_id={match.problem_id}")
+                match_logger.warning(
+                    f"Not sending match_started notification due to missing match_id/problem_id: match_id={match.id}, problem_id={match.problem_id}"
+                )
 
         # Commit changes
         db.add(match)
@@ -490,11 +512,15 @@ async def get_active_match(
                 "username": opponent.username,
                 "rating": opponent.rating,
             },
-            "problem_id": str(active_match.problem_id) if active_match.problem_id else None,
+            "problem_id": (
+                str(active_match.problem_id) if active_match.problem_id else None
+            ),
             "start_time": active_match.start_time,
-            "player_accepted": active_match.player1_accepted
-            if active_match.player1_id == user_uuid
-            else active_match.player2_accepted,
+            "player_accepted": (
+                active_match.player1_accepted
+                if active_match.player1_id == user_uuid
+                else active_match.player2_accepted
+            ),
         }
     except (BadRequestException, ResourceNotFoundException, DatabaseException) as e:
         raise e
@@ -553,8 +579,7 @@ async def get_match_history(
 
         # Count total matches
         result = await db.execute(
-            select(Match)
-            .where(
+            select(Match).where(
                 or_(
                     Match.player1_id == user_uuid,
                     Match.player2_id == user_uuid,

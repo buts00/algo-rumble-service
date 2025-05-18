@@ -3,7 +3,7 @@ from .match import (
     process_match_queue,
     send_match_notification,
     select_problem_for_match,
-    cancel_expired_matches
+    cancel_expired_matches,
 )
 from .auth import UserService
 from .auth_util import (
@@ -11,20 +11,20 @@ from .auth_util import (
     verify_password,
     create_access_token,
     create_refresh_token,
-    decode_token
+    decode_token,
 )
 from .auth_dependency import (
     TokenFromCookie,
     AccessTokenFromCookie,
     RefreshTokenFromCookie,
     get_current_user,
-    get_user_service
+    get_user_service,
 )
 from .match_rating import (
     update_ratings_after_match,
     update_ratings_for_draw,
     calculate_expected_score,
-    calculate_new_rating
+    calculate_new_rating,
 )
 from .match_consumer import run_consumer
 
@@ -49,5 +49,5 @@ __all__ = [
     "update_ratings_for_draw",
     "calculate_expected_score",
     "calculate_new_rating",
-    "run_consumer"
+    "run_consumer",
 ]

@@ -3,13 +3,17 @@ import time
 import uuid
 from contextlib import asynccontextmanager
 
-import uvicorn
-from dotenv import load_dotenv
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 
-from src.presentation.routes import auth_router, match_router, problem_router, testcase_router, submission_router
+from src.presentation.routes import (
+    auth_router,
+    match_router,
+    problem_router,
+    testcase_router,
+    submission_router,
+)
 from src.config import logger
 from src.data.repositories import get_redis_client, init_db
 from src.errors import register_exception_handlers
@@ -79,7 +83,9 @@ app = FastAPI(
 # Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],  # In production, replace with specific origins
+    allow_origins=[
+        "http://localhost:3000"
+    ],  # In production, replace with specific origins
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

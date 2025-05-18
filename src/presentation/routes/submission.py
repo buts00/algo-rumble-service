@@ -32,9 +32,9 @@ submission_router = APIRouter(prefix="/submissions", tags=["submissions"])
 
 @submission_router.post("/match")
 async def submit_solution(
-        submission_data: SubmissionCreate,
-        db: Session = Depends(get_session),
-        request: Request = None,
+    submission_data: SubmissionCreate,
+    db: Session = Depends(get_session),
+    request: Request = None,
 ):
     """
     Submit a solution for a match.
@@ -159,9 +159,7 @@ async def submit_solution(
                     "result": "win",
                     "new_rating": winner.rating,
                 }
-                await send_match_notification(
-                    str(winner.id), winner_notification
-                )
+                await send_match_notification(str(winner.id), winner_notification)
 
                 loser_notification = {
                     "type": "match_completed",
@@ -172,17 +170,12 @@ async def submit_solution(
                     "result": "loss",
                     "new_rating": loser.rating,
                 }
-                await send_match_notification(
-                    str(loser.id), loser_notification
-                )
+                await send_match_notification(str(loser.id), loser_notification)
 
             submission_logger.info(
                 f"Match completed: ID {match_id}, Winner: {user_uuid}"
             )
-            return {
-                "is_correct": True,
-                "message": "Solution correct, match completed"
-            }
+            return {"is_correct": True, "message": "Solution correct, match completed"}
         else:
             # Notify user about incorrect solution
             await send_match_notification(
@@ -193,14 +186,14 @@ async def submit_solution(
                     "message": "Incorrect solution. Try again!",
                     "match_id": match_id,
                     "problem_id": str(match.problem_id),
-                }
+                },
             )
             submission_logger.info(
                 f"Incorrect solution submitted: Match ID {match_id}, User ID {user_uuid}"
             )
             return {
                 "is_correct": False,
-                "message": "Solution incorrect, match continues"
+                "message": "Solution incorrect, match continues",
             }
 
     except (ResourceNotFoundException, AuthorizationException, BadRequestException):
@@ -259,15 +252,14 @@ def fetch_test_cases(problem_id: str) -> List[dict]:
                 input_data = input_obj["Body"].read().decode("utf-8")
                 output_data = output_obj["Body"].read().decode("utf-8")
 
-                test_cases.append({
-                    "input": input_data,
-                    "expected_output": output_data
-                })
+                test_cases.append({"input": input_data, "expected_output": output_data})
 
             except ClientError as e:
                 submission_logger.warning(f"Failed to fetch test case {idx}: {str(e)}")
 
-        submission_logger.info(f"Fetched {len(test_cases)} test cases for problem {problem_id}")
+        submission_logger.info(
+            f"Fetched {len(test_cases)} test cases for problem {problem_id}"
+        )
         return test_cases
 
     except Exception as e:

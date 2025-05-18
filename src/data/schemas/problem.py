@@ -1,8 +1,8 @@
 import uuid
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import List
 
-from sqlalchemy import ARRAY, JSON, Column, String
+from sqlalchemy import ARRAY, Column, String
 from sqlmodel import Field, SQLModel
 
 from src.data.schemas.base import UUID_TYPE
