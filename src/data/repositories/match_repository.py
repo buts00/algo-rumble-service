@@ -177,3 +177,19 @@ async def update_ratings_for_draw_db(db, player1_id, player2_id):
     )
     await db.commit()
     return new_rating1, new_rating2
+
+
+async def get_match_by_id(db, match_id):
+    result = await db.execute(select(Match).where(Match.id == match_id))
+    return result.scalar_one_or_none()
+
+
+async def finish_match_with_winner(db, match_id, winner_id):
+    await db.execute(
+        update(Match)
+        .where(Match.id == match_id)
+        .values(
+            status=MatchStatus.COMPLETED, winner_id=winner_id, end_time=datetime.now()
+        )
+    )
+    await db.commit()

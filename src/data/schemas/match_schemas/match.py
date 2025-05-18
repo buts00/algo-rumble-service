@@ -25,3 +25,8 @@ class MatchResponse(MatchBase):
     end_time: Optional[datetime] = None
 
     model_config = {"from_attributes": True}
+
+
+class CapitulateRequest(BaseModel):
+    match_id: uuid.UUID
+    loser_id: uuid.UUID

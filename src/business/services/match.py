@@ -8,6 +8,11 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from src.config import logger
+from src.data.repositories.match_repository import (
+    get_match_by_id,
+    finish_match_with_winner,
+)
+from src.data.repositories.user_repository import get_users_by_ids
 from src.data.schemas import Match, MatchStatus, Problem, User
 from src.data.schemas.match_schemas import PlayerQueueEntry
 from src.presentation.websocket import manager
@@ -262,3 +267,65 @@ async def cancel_expired_matches(db: Session) -> None:
         match_logger.info(f"Cancelled {len(pending_matches)} expired matches")
     except Exception as e:
         match_logger.error(f"Error cancelling expired matches: {str(e)}")
+
+
+async def capitulate_match_logic(db, match_id: uuid.UUID, loser_id: uuid.UUID):
+    from src.business.services.match_rating import update_ratings_after_match
+    from src.presentation.routes.submission import submission_logger
+
+    match = await get_match_by_id(db, match_id)
+    if not match or match.status != MatchStatus.ACTIVE:
+        raise Exception("Match not found or not active")
+
+    if match.player1_id == loser_id:
+        winner_id = match.player2_id
+    elif match.player2_id == loser_id:
+        winner_id = match.player1_id
+    else:
+        raise Exception("Loser not in this match")
+
+    await finish_match_with_winner(db, match_id, winner_id)
+
+    users = await get_users_by_ids(db, [match.player1_id, match.player2_id])
+    user_map = {u.id: u for u in users}
+    winner = user_map.get(winner_id)
+    loser = user_map.get(loser_id)
+
+    old_winner_rating = winner.rating
+    old_loser_rating = loser.rating
+
+    if not winner or not loser:
+        raise Exception("Could not load player data")
+
+    await update_ratings_after_match(db, winner.id, loser.id)
+
+    await manager.send_match_notification(
+        str(winner.id),
+        {
+            "type": "match_completed",
+            "match_id": str(match.id),
+            "message": "Congratulations! You won the match as your opponent surrendered.",
+            "problem_id": str(match.problem_id),
+            "result": "win",
+            "new_rating": winner.rating,
+            "old_rating": old_winner_rating,
+        },
+    )
+
+    # WS лузер
+    await manager.send_match_notification(
+        str(loser.id),
+        {
+            "type": "match_completed",
+            "message": f"You surrendered the match. '{winner.username}' is declared the winner.",
+            "match_id": str(match.id),
+            "problem_id": str(match.problem_id),
+            "result": "loss",
+            "new_rating": loser.rating,
+            "old_rating": old_loser_rating,
+        },
+    )
+
+    submission_logger.info(
+        f"Match completed via capitulation: ID {match_id}, Winner: {winner.username}"
+    )

@@ -141,6 +141,9 @@ async def submit_solution(
                 winner = player1 if match.winner_id == player1.id else player2
                 loser = player2 if match.winner_id == player1.id else player1
 
+                old_winner_rating = winner.rating
+                old_loser_rating = loser.rating
+
                 await update_ratings_after_match(db, winner.id, loser.id)
                 db.commit()
 
@@ -157,6 +160,7 @@ async def submit_solution(
                     "problem_id": str(match.problem_id),
                     "result": "win",
                     "new_rating": winner.rating,
+                    "old_rating": old_winner_rating,
                 }
                 await send_match_notification(str(winner.id), winner_notification)
 
@@ -167,6 +171,7 @@ async def submit_solution(
                     "problem_id": str(match.problem_id),
                     "result": "loss",
                     "new_rating": loser.rating,
+                    "old_rating": old_loser_rating,
                 }
                 await send_match_notification(str(loser.id), loser_notification)
 
