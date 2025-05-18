@@ -19,14 +19,17 @@ match_logger = logger.getChild("match")
 player_queue: List[PlayerQueueEntry] = []
 
 
-async def add_player_to_queue(user_id: uuid.UUID, rating: int) -> None:
+async def add_player_to_queue(user_id: uuid.UUID, rating: int) -> bool:
     """
     Add a player to the matchmaking queue.
-
-    Args:
-        user_id: The ID of the player
-        rating: The player's current rating
+    Returns True if added, False if already in queue.
     """
+    # Check if user is already in the queue
+    for entry in player_queue:
+        if entry.user_id == user_id:
+            match_logger.info(f"Player {user_id} is already in the queue.")
+            return False
+
     # Create a queue entry
     entry = PlayerQueueEntry(
         user_id=user_id, rating=rating, timestamp=datetime.utcnow()
@@ -37,6 +40,7 @@ async def add_player_to_queue(user_id: uuid.UUID, rating: int) -> None:
     match_logger.info(
         f"Player {user_id} added to queue. Queue size: {len(player_queue)}"
     )
+    return True
 
 
 async def process_match_queue(

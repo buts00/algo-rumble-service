@@ -152,7 +152,6 @@ async def submit_solution(
                 # Send match completion notification to both players
                 winner_notification = {
                     "type": "match_completed",
-                    "is_correct": True,
                     "message": "Congratulations! You solved the problem correctly and won the match.",
                     "match_id": str(match.id),
                     "problem_id": str(match.problem_id),
@@ -163,7 +162,6 @@ async def submit_solution(
 
                 loser_notification = {
                     "type": "match_completed",
-                    "is_correct": False,
                     "message": f"Your opponent '{winner.username}' solved the problem and won the match.",
                     "match_id": str(match.id),
                     "problem_id": str(match.problem_id),

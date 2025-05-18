@@ -178,8 +178,14 @@ async def find_match(
                 detail="You already have an active or pending match"
             )
 
-        # Add player to queue
-        await add_player_to_queue(user_uuid, user.rating)
+        # Add player to queue (returns True if added, False if already in queue)
+        added = await add_player_to_queue(user_uuid, user.rating)
+        if not added:
+            match_logger.info(f"User {user_id} is already searching for a match.")
+            return {
+                "status": "already_searching",
+                "message": "You are already searching for a match"
+            }
         match_logger.info(f"User added to match queue: {user_id}")
 
         # Process match queue in background, pass the timeout callback
