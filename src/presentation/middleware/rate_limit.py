@@ -1,6 +1,7 @@
 from fastapi import Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.status import HTTP_429_TOO_MANY_REQUESTS
+from starlette.responses import JSONResponse
 
 from src.config import logger
 from src.data.repositories import RedisClient
@@ -62,7 +63,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
                 f"Rate limit exceeded: IP {client_ip}, Path {path}, "
                 f"Count {current_count}, Limit {rate_limit}"
             )
-            return Response(
+            return JSONResponse(
                 content={"detail": "Rate limit exceeded. Please try again later."},
                 status_code=HTTP_429_TOO_MANY_REQUESTS,
                 media_type="application/json",

@@ -81,11 +81,24 @@ app = FastAPI(
 )
 
 # Add CORS middleware
+origins = [
+    "http://localhost:3000",
+    "https://algo-rubmle.vercel.app",
+]
+
+def is_allowed_origin(origin: str) -> bool:
+    return origin.endswith(".vercel.app") or origin in origins
+
+class CustomCORSMiddleware(CORSMiddleware):
+    async def dispatch(self, request, call_next):
+        origin = request.headers.get("origin")
+        if origin and not is_allowed_origin(origin):
+            return Response("CORS origin not allowed", status_code=403)
+        return await super().dispatch(request, call_next)
+
 app.add_middleware(
-    CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000"
-    ],  # In production, replace with specific origins
+    CustomCORSMiddleware,
+    allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

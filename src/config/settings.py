@@ -54,7 +54,7 @@ class Settings(BaseSettings):
     LOG_FILE: str = "logs/app.log"
 
     MATCH_ACCEPT_TIMEOUT_SECONDS: int = Field(30, env="MATCH_ACCEPT_TIMEOUT_SECONDS")
-    MATCH_DURATION_SECONDS: int = Field(100000, env="MATCH_DURATION_SECONDS")
+    MATCH_DURATION_SECONDS: int = Field(1800, env="MATCH_DURATION_SECONDS")
 
     model_config = SettingsConfigDict(
         env_file=".env",
