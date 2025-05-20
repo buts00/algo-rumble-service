@@ -14,8 +14,8 @@ from sqlalchemy import or_, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.data.schemas import User
-from src.config import logger, Config  # <-- updated import
+from src.data.schemas import User, UserBaseResponse
+from src.config import logger, Config
 from src.data.repositories import get_session
 from src.data.schemas.match_schemas.match import CapitulateRequest
 from src.errors import (
@@ -33,9 +33,10 @@ from src.business.services.match import (
     process_match_queue,
     send_match_notification,
     capitulate_match_logic,
-    remove_player_from_queue,  # додати імпорт
+    remove_player_from_queue,
 )
-from src.presentation.websocket import manager  # <-- Add this import
+from src.business.services.auth_dependency import get_current_user
+from src.presentation.websocket import manager
 
 # Create a module-specific logger
 match_logger = logger.getChild("match")
@@ -132,6 +133,7 @@ async def find_match(
     request_data: FindMatchRequest,
     background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_session),
+    current_user: UserBaseResponse = Depends(get_current_user),
     request: Request = None,
 ):
     """
@@ -216,6 +218,7 @@ async def accept_match(
     request_data: AcceptMatchRequest,
     background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_session),
+    current_user: UserBaseResponse = Depends(get_current_user),
     request: Request = None,
 ):
     """
@@ -357,6 +360,7 @@ async def decline_match(
     match_id: str,
     user_id: str,
     db: AsyncSession = Depends(get_session),
+    current_user: UserBaseResponse = Depends(get_current_user),
     request: Request = None,
 ):
     """
@@ -890,6 +894,7 @@ async def notify_match_found(match, user_id, opponent_id, db: AsyncSession):
 async def capitulate_match(
     request: CapitulateRequest,
     db: AsyncSession = Depends(get_session),
+    current_user: UserBaseResponse = Depends(get_current_user)
 ):
     try:
         await capitulate_match_logic(db, request.match_id, request.loser_id)
@@ -902,6 +907,7 @@ async def capitulate_match(
 @router.post("/cancel_find")
 async def cancel_find_match(
     request_data: FindMatchRequest,
+    current_user: UserBaseResponse = Depends(get_current_user)
 ):
     """
     Cancel matchmaking search for a user (remove from queue).

@@ -10,7 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
-from src.data.schemas import User
+from src.data.schemas import User, UserBaseResponse
 from src.config import Config, logger
 from src.data.repositories import get_session
 from src.errors import (
@@ -20,7 +20,7 @@ from src.errors import (
     ResourceNotFoundException,
 )
 from src.data.schemas import Match, MatchStatus
-from src.business.services import update_ratings_after_match, send_match_notification
+from src.business.services import update_ratings_after_match, send_match_notification, get_current_user
 from src.data.schemas import Problem
 from src.data.schemas import SubmissionCreate
 
@@ -35,6 +35,7 @@ async def submit_solution(
     submission_data: SubmissionCreate,
     db: Session = Depends(get_session),
     request: Request = None,
+    current_user: UserBaseResponse = Depends(get_current_user)
 ):
     """
     Submit a solution for a match.
