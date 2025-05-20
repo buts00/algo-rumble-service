@@ -3,6 +3,7 @@ from enum import Enum
 
 class UserRole(str, Enum):
     """User roles in the system."""
+
     USER = "user"
     ADMIN = "admin"
     MODERATOR = "moderator"
@@ -10,6 +11,7 @@ class UserRole(str, Enum):
 
 class MatchStatus(str, Enum):
     """Match statuses in the system."""
+
     CREATED = "created"
     PENDING = "pending"
     ACTIVE = "active"

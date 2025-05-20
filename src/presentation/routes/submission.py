@@ -15,7 +15,7 @@ submission_router = APIRouter(prefix="/submissions", tags=["submissions"])
 @submission_router.post(
     "/match",
     summary="Submit a solution",
-    description="Submits a solution for a match, runs it against test cases using OneCompiler API, and updates match status and ratings if correct."
+    description="Submits a solution for a match, runs it against test cases using OneCompiler API, and updates match status and ratings if correct.",
 )
 async def submit_solution(
     submission_data: SubmissionCreate,
@@ -28,7 +28,9 @@ async def submit_solution(
         )
         raise AuthorizationException(detail="Not authorized to submit for another user")
 
-    submission_logger.info(f"Processing submission for match ID: {submission_data.match_id}")
+    submission_logger.info(
+        f"Processing submission for match ID: {submission_data.match_id}"
+    )
     return await SubmissionService.process_submission(
         str(submission_data.user_id),
         str(submission_data.match_id),

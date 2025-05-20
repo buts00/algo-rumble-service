@@ -17,14 +17,14 @@ class BaseModel(SQLModel):
             primary_key=True,
             default=uuid.uuid4,
         ),
-        description="Unique identifier of the entity."
+        description="Unique identifier of the entity.",
     )
 
     created_at: datetime = Field(
         default_factory=datetime.utcnow,
-        description="Timestamp when the entity was created."
+        description="Timestamp when the entity was created.",
     )
     updated_at: datetime = Field(
         default_factory=datetime.utcnow,
-        description="Timestamp when the entity was last updated."
+        description="Timestamp when the entity was last updated.",
     )

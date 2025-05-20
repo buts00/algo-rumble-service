@@ -36,7 +36,9 @@ async def update_match(db: AsyncSession, match_id: UUID, update_data: dict) -> M
     return match
 
 
-async def finish_match_with_winner(db: AsyncSession, match_id: UUID, winner_id: UUID) -> Match:
+async def finish_match_with_winner(
+    db: AsyncSession, match_id: UUID, winner_id: UUID
+) -> Match:
     """Finish a match with a winner."""
     match = await get_match_by_id(db, match_id)
     await db.execute(

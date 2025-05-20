@@ -1,5 +1,4 @@
 import uuid
-from typing import Optional
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -14,14 +13,14 @@ class UserBase(BaseModel):
         max_length=50,
         min_length=3,
         examples=["algo_champ"],
-        description="Unique username for the user."
+        description="Unique username for the user.",
     )
     country_code: str = Field(
         ...,
         max_length=2,
         min_length=2,
         examples=["UA"],
-        description="ISO 3166-1 alpha-2 country code."
+        description="ISO 3166-1 alpha-2 country code.",
     )
 
     @field_validator("country_code")
@@ -49,13 +48,15 @@ class UserCreateModel(UserBase):
         min_length=8,
         max_length=64,
         examples=["Str0ngP@ss!"],
-        description="Password with at least 8 characters, including letters, numbers, and symbols."
+        description="Password with at least 8 characters, including letters, numbers, and symbols.",
     )
 
     @field_validator("password")
     def validate_password(cls, value: str) -> str:
         if not any(c.isupper() for c in value) or not any(c.isdigit() for c in value):
-            raise ValueError("Password must contain at least one uppercase letter and one digit.")
+            raise ValueError(
+                "Password must contain at least one uppercase letter and one digit."
+            )
         return value
 
 
@@ -67,14 +68,14 @@ class UserLoginModel(BaseModel):
         max_length=50,
         min_length=3,
         examples=["algo_champ"],
-        description="Username for login."
+        description="Username for login.",
     )
     password: str = Field(
         ...,
         min_length=8,
         max_length=64,
         examples=["Str0ngP@ss!"],
-        description="User password."
+        description="User password.",
     )
 
 

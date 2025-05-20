@@ -13,30 +13,30 @@ class User(BaseModel, table=True):
 
     username: str = Field(
         sa_column=Column(String(50), unique=True, nullable=False),
-        description="Unique username for the user."
+        description="Unique username for the user.",
     )
     password_hash: str = Field(
         sa_column=Column(String(256), nullable=False),
         exclude=True,
-        description="Hashed user password."
+        description="Hashed user password.",
     )
     role: UserRole = Field(
         sa_column=Column(UserRole, default=UserRole.USER, nullable=False),
-        description="User role in the system."
+        description="User role in the system.",
     )
     rating: int = Field(
         default=1000,
         sa_column=Column(INTEGER, default=1000, nullable=False),
-        description="User's rating for matchmaking."
+        description="User's rating for matchmaking.",
     )
     country_code: str = Field(
         sa_column=Column(String(2), nullable=False),
-        description="ISO 3166-1 alpha-2 country code."
+        description="ISO 3166-1 alpha-2 country code.",
     )
     refresh_token: str = Field(
         sa_column=Column(String(500), nullable=True, default=None),
         exclude=True,
-        description="JWT refresh token for the user."
+        description="JWT refresh token for the user.",
     )
 
     def __repr__(self):

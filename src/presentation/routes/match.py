@@ -1,13 +1,17 @@
 import uuid
-from fastapi import APIRouter, BackgroundTasks, Depends, WebSocket, WebSocketDisconnect
+
+from fastapi import (APIRouter, BackgroundTasks, Depends, WebSocket,
+                     WebSocketDisconnect)
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.business.services.auth_dependency import get_current_user, AccessTokenFromCookie
+from src.business.services.auth_dependency import (AccessTokenFromCookie,
+                                                   get_current_user)
 from src.business.services.match import MatchService
 from src.config import logger
 from src.data.repositories import get_session
-from src.data.schemas import AcceptMatchRequest, CapitulateRequest, FindMatchRequest, UserBaseResponse
-from src.errors import AuthenticationException, AuthorizationException
+from src.data.schemas import (AcceptMatchRequest, CapitulateRequest,
+                              FindMatchRequest, UserBaseResponse)
+from src.errors import AuthorizationException
 from src.presentation.websocket import manager
 
 router = APIRouter(prefix="/match", tags=["match"])
@@ -17,7 +21,7 @@ match_logger = logger.getChild("match")
 @router.post(
     "/find",
     summary="Find a match",
-    description="Adds the user to the matchmaking queue and processes the queue in the background."
+    description="Adds the user to the matchmaking queue and processes the queue in the background.",
 )
 async def find_match(
     request_data: FindMatchRequest,
@@ -27,15 +31,19 @@ async def find_match(
 ):
     match_logger.info(f"Match find request for user ID: {request_data.user_id}")
     if str(request_data.user_id) != str(current_user.id):
-        match_logger.warning(f"Unauthorized match request: {request_data.user_id} != {current_user.id}")
+        match_logger.warning(
+            f"Unauthorized match request: {request_data.user_id} != {current_user.id}"
+        )
         raise AuthorizationException("Can only find matches for yourself")
-    return await MatchService.find_match_service(request_data.user_id, current_user, db, background_tasks)
+    return await MatchService.find_match_service(
+        request_data.user_id, current_user, db, background_tasks
+    )
 
 
 @router.post(
     "/accept",
     summary="Accept a match",
-    description="Accepts a pending match for the authenticated user."
+    description="Accepts a pending match for the authenticated user.",
 )
 async def accept_match(
     request_data: AcceptMatchRequest,
@@ -44,15 +52,19 @@ async def accept_match(
 ):
     match_logger.info(f"Match accept request for match ID: {request_data.match_id}")
     if str(request_data.user_id) != str(current_user.id):
-        match_logger.warning(f"Unauthorized accept request: {request_data.user_id} != {current_user.id}")
+        match_logger.warning(
+            f"Unauthorized accept request: {request_data.user_id} != {current_user.id}"
+        )
         raise AuthorizationException("Can only accept matches for yourself")
-    return await MatchService.accept_match_service(str(request_data.match_id), str(current_user.id), db)
+    return await MatchService.accept_match_service(
+        str(request_data.match_id), str(current_user.id), db
+    )
 
 
 @router.post(
     "/decline/{match_id}",
     summary="Decline a match",
-    description="Declines a pending match for the authenticated user."
+    description="Declines a pending match for the authenticated user.",
 )
 async def decline_match(
     match_id: uuid.UUID,
@@ -60,13 +72,15 @@ async def decline_match(
     current_user: UserBaseResponse = Depends(get_current_user),
 ):
     match_logger.info(f"Match decline request for match ID: {match_id}")
-    return await MatchService.decline_match_service(str(match_id), str(current_user.id), db)
+    return await MatchService.decline_match_service(
+        str(match_id), str(current_user.id), db
+    )
 
 
 @router.get(
     "/active",
     summary="Get active match",
-    description="Returns the active or pending match for the authenticated user."
+    description="Returns the active or pending match for the authenticated user.",
 )
 async def get_active_match(
     db: AsyncSession = Depends(get_session),
@@ -79,7 +93,7 @@ async def get_active_match(
 @router.get(
     "/history",
     summary="Get match history",
-    description="Returns the match history for the authenticated user with pagination."
+    description="Returns the match history for the authenticated user with pagination.",
 )
 async def get_match_history(
     limit: int = 10,
@@ -88,13 +102,15 @@ async def get_match_history(
     current_user: UserBaseResponse = Depends(get_current_user),
 ):
     match_logger.info(f"Match history request for user ID: {current_user.id}")
-    return await MatchService.get_match_history_service(str(current_user.id), limit, offset, db)
+    return await MatchService.get_match_history_service(
+        str(current_user.id), limit, offset, db
+    )
 
 
 @router.get(
     "/details/{match_id}",
     summary="Get match details",
-    description="Returns details of a specific match, if the user is a participant."
+    description="Returns details of a specific match, if the user is a participant.",
 )
 async def get_match_details(
     match_id: uuid.UUID,
@@ -104,7 +120,9 @@ async def get_match_details(
     match_logger.info(f"Match details request for match ID: {match_id}")
     match = await MatchService.get_match_details_service(str(match_id), db)
     if str(current_user.id) not in [str(match.player1_id), str(match.player2_id)]:
-        match_logger.warning(f"Unauthorized details request: {current_user.id} not in match {match_id}")
+        match_logger.warning(
+            f"Unauthorized details request: {current_user.id} not in match {match_id}"
+        )
         raise AuthorizationException("Not a participant in this match")
     return match
 
@@ -112,7 +130,7 @@ async def get_match_details(
 @router.post(
     "/complete/{match_id}",
     summary="Complete a match",
-    description="Marks a match as completed with the specified winner, if the user is a participant."
+    description="Marks a match as completed with the specified winner, if the user is a participant.",
 )
 async def complete_match(
     match_id: uuid.UUID,
@@ -123,7 +141,9 @@ async def complete_match(
     match_logger.info(f"Match complete request for match ID: {match_id}")
     match = await MatchService.get_match_details_service(str(match_id), db)
     if str(current_user.id) not in [str(match.player1_id), str(match.player2_id)]:
-        match_logger.warning(f"Unauthorized complete request: {current_user.id} not in match {match_id}")
+        match_logger.warning(
+            f"Unauthorized complete request: {current_user.id} not in match {match_id}"
+        )
         raise AuthorizationException("Not a participant in this match")
     return await MatchService.complete_match_service(str(match_id), str(winner_id), db)
 
@@ -131,7 +151,7 @@ async def complete_match(
 @router.post(
     "/capitulate",
     summary="Capitulate a match",
-    description="Allows a user to surrender a match, declaring the opponent as the winner."
+    description="Allows a user to surrender a match, declaring the opponent as the winner.",
 )
 async def capitulate_match(
     request: CapitulateRequest,
@@ -140,7 +160,9 @@ async def capitulate_match(
 ):
     match_logger.info(f"Capitulate request for match ID: {request.match_id}")
     if str(request.loser_id) != str(current_user.id):
-        match_logger.warning(f"Unauthorized capitulate request: {request.loser_id} != {current_user.id}")
+        match_logger.warning(
+            f"Unauthorized capitulate request: {request.loser_id} != {current_user.id}"
+        )
         raise AuthorizationException("Can only capitulate for yourself")
     await MatchService.capitulate_match_logic(db, request.match_id, request.loser_id)
     return {"message": "Match capitulated successfully"}
@@ -149,7 +171,7 @@ async def capitulate_match(
 @router.post(
     "/cancel_find",
     summary="Cancel match search",
-    description="Removes the authenticated user from the matchmaking queue."
+    description="Removes the authenticated user from the matchmaking queue.",
 )
 async def cancel_find_match(
     current_user: UserBaseResponse = Depends(get_current_user),
@@ -158,17 +180,16 @@ async def cancel_find_match(
     return await MatchService.cancel_find_match_service(str(current_user.id))
 
 
-@router.websocket(
-    "/ws/{user_id}",
-    name="Match notifications"
-)
+@router.websocket("/ws/{user_id}", name="Match notifications")
 async def websocket_endpoint(
     websocket: WebSocket,
     user_id: uuid.UUID,
     token_data: dict = Depends(AccessTokenFromCookie()),
 ):
     if str(user_id) != token_data["user"]["id"]:
-        match_logger.warning(f"Unauthorized WebSocket connection: {user_id} != {token_data['user']['id']}")
+        match_logger.warning(
+            f"Unauthorized WebSocket connection: {user_id} != {token_data['user']['id']}"
+        )
         await websocket.close(code=1008, reason="Unauthorized")
         return
 

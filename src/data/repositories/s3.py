@@ -4,6 +4,7 @@ from typing import Any, Dict
 import boto3
 from botocore.client import Config
 from botocore.exceptions import ClientError
+
 from src.config import Config as AppConfig
 from src.config import logger
 
@@ -70,5 +71,7 @@ async def upload_testcase_to_s3(
         s3_logger.info(f"Uploaded testcase {testcase_number} for problem {problem_id}")
         return {"input_path": input_path, "output_path": output_path}
     except ClientError as e:
-        s3_logger.error(f"Error uploading testcase {testcase_number} for problem {problem_id}: {str(e)}")
+        s3_logger.error(
+            f"Error uploading testcase {testcase_number} for problem {problem_id}: {str(e)}"
+        )
         raise

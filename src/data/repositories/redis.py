@@ -52,13 +52,15 @@ class MockRedis:
     def zrange(self, name: str, start: int, end: int) -> List[str]:
         if name not in self.sorted_sets:
             return []
-        return [item[0] for item in self.sorted_sets[name][start:end + 1]]
+        return [item[0] for item in self.sorted_sets[name][start : end + 1]]
 
     def zrem(self, name: str, value: str) -> int:
         if name not in self.sorted_sets:
             return 0
         original_len = len(self.sorted_sets[name])
-        self.sorted_sets[name] = [item for item in self.sorted_sets[name] if item[0] != value]
+        self.sorted_sets[name] = [
+            item for item in self.sorted_sets[name] if item[0] != value
+        ]
         return original_len - len(self.sorted_sets[name])
 
     def delete(self, name: str) -> int:

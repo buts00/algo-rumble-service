@@ -1,12 +1,12 @@
-from uuid import UUID
 from typing import List
+from uuid import UUID
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.data.schemas import User
-from src.errors import ResourceNotFoundException, DatabaseException
 from src.config import logger
+from src.data.schemas import User
+from src.errors import DatabaseException, ResourceNotFoundException
 
 user_logger = logger.getChild("user")
 

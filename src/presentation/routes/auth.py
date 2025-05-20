@@ -2,10 +2,10 @@ from fastapi import APIRouter, Depends, Response, status
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.business.services import (
-    AccessTokenFromCookie, RefreshTokenFromCookie, UserService,
-    create_access_token, create_refresh_token, get_user_service, verify_password
-)
+from src.business.services import (AccessTokenFromCookie,
+                                   RefreshTokenFromCookie, UserService,
+                                   create_access_token, create_refresh_token,
+                                   get_user_service, verify_password)
 from src.config import Config, logger
 from src.data.repositories import RedisClient, get_redis_client, get_session
 from src.data.schemas import UserCreateModel, UserLoginModel, UserResponseModel
@@ -20,7 +20,7 @@ auth_router = APIRouter(prefix="/auth", tags=["auth"])
     response_model=UserResponseModel,
     status_code=status.HTTP_201_CREATED,
     summary="Register a new user",
-    description="Creates a new user account, generates access and refresh tokens, and sets them as HTTP-only cookies."
+    description="Creates a new user account, generates access and refresh tokens, and sets them as HTTP-only cookies.",
 )
 async def create_user(
     user_data: UserCreateModel,
@@ -46,7 +46,7 @@ async def create_user(
     "/login",
     response_model=UserResponseModel,
     summary="Log in a user",
-    description="Authenticates a user, generates access and refresh tokens, and sets them as HTTP-only cookies."
+    description="Authenticates a user, generates access and refresh tokens, and sets them as HTTP-only cookies.",
 )
 async def login(
     login_data: UserLoginModel,
@@ -70,7 +70,7 @@ async def login(
 @auth_router.get(
     "/refresh-token",
     summary="Refresh JWT tokens",
-    description="Refreshes access and refresh tokens using the refresh token cookie, adding the old token to a Redis blocklist."
+    description="Refreshes access and refresh tokens using the refresh token cookie, adding the old token to a Redis blocklist.",
 )
 async def update_tokens(
     response: Response,
@@ -98,7 +98,7 @@ async def update_tokens(
     "/me",
     response_model=UserResponseModel,
     summary="Get current user",
-    description="Returns the data of the currently authenticated user based on the access token."
+    description="Returns the data of the currently authenticated user based on the access token.",
 )
 async def get_current_user(
     user_service: UserService = Depends(get_user_service),
@@ -117,7 +117,7 @@ async def get_current_user(
 @auth_router.get(
     "/logout",
     summary="Log out a user",
-    description="Adds access and refresh tokens to a Redis blocklist and deletes the cookies."
+    description="Adds access and refresh tokens to a Redis blocklist and deletes the cookies.",
 )
 async def revoke_token(
     response: Response,
@@ -130,8 +130,12 @@ async def revoke_token(
     redis_client.add_jti_to_blocklist(refresh_token_details["jti"])
     redis_client.add_jti_to_blocklist(access_token_details["jti"])
     response = JSONResponse(content={"message": "Logged out successfully"})
-    response.delete_cookie(key="access_token", httponly=True, secure=True, samesite="strict")
-    response.delete_cookie(key="refresh_token", httponly=True, secure=True, samesite="strict")
+    response.delete_cookie(
+        key="access_token", httponly=True, secure=True, samesite="strict"
+    )
+    response.delete_cookie(
+        key="refresh_token", httponly=True, secure=True, samesite="strict"
+    )
     auth_logger.info(f"User logged out: ID {user_id}")
     return response
 
