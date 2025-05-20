@@ -1,36 +1,17 @@
-from .base import BaseModel, UUID_TYPE
-from .user import User, UserRole
-from .match import Match, MatchStatus, FindMatchRequest, AcceptMatchRequest
-from .problem import Problem
-from .auth import (
-    UserBase,
-    UserModel,
-    UserCreateModel,
-    UserLoginModel,
-    UserBaseResponse,
-    UserResponseModel,
-)
-from .match_schemas import (
-    MatchBase,
-    MatchCreate,
-    MatchResponse,
-    PlayerQueueEntry,
-    MatchQueueResult,
-)
-from .problem_schemas import (
-    ProblemCreate,
-    ProblemResponse,
-    ProblemUpdate,
-    ProblemSelectionParams,
-    TestCaseCreate,
-    TestCaseResponse,
-    TestCase,
-)
+from .auth import (UserBase, UserBaseResponse, UserCreateModel, UserLoginModel,
+                   UserModel, UserResponseModel)
+from .base import BaseModel
+from .match import (AcceptMatchRequest, CapitulateRequest, FindMatchRequest,
+                    Match, MatchBase, MatchCreate, MatchQueueResult,
+                    MatchResponse, MatchStatus, PlayerQueueEntry)
+from .problem import (Problem, ProblemCreate, ProblemResponse,
+                      ProblemSelectionParams, ProblemUpdate)
 from .submission import SubmissionCreate
+from .testcase import TestCase, TestCaseCreate, TestCaseResponse
+from .user import User, UserRole
 
 __all__ = [
     "BaseModel",
-    "UUID_TYPE",
     "User",
     "UserRole",
     "Match",
@@ -57,4 +38,5 @@ __all__ = [
     "TestCaseResponse",
     "TestCase",
     "SubmissionCreate",
+    "CapitulateRequest",
 ]

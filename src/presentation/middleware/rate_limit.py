@@ -1,7 +1,7 @@
 from fastapi import Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.status import HTTP_429_TOO_MANY_REQUESTS
 from starlette.responses import JSONResponse
+from starlette.status import HTTP_429_TOO_MANY_REQUESTS
 
 from src.config import logger
 from src.data.repositories import RedisClient

@@ -1,5 +1,6 @@
-from pydantic import BaseModel
 from uuid import UUID
+
+from pydantic import BaseModel
 
 
 class SubmissionCreate(BaseModel):
@@ -7,4 +8,3 @@ class SubmissionCreate(BaseModel):
     match_id: UUID
     code: str
     language: str
-    # problem_id removed, match_id added

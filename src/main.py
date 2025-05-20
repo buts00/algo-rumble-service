@@ -1,7 +1,6 @@
 import os
 import time
 import uuid
-
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
@@ -9,17 +8,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import Response
 
-from src.presentation.routes import (
-    auth_router,
-    match_router,
-    problem_router,
-    testcase_router,
-    submission_router,
-)
 from src.config import logger
 from src.data.repositories import get_redis_client, init_db
 from src.errors import register_exception_handlers
 from src.presentation.middleware.rate_limit import RateLimitMiddleware
+from src.presentation.routes import (auth_router, match_router, problem_router,
+                                     submission_router, testcase_router)
 
 
 class LoggingMiddleware(BaseHTTPMiddleware):
@@ -98,10 +92,10 @@ logger.info("Rate limiting middleware added")
 register_exception_handlers(app)
 
 # Маршрути
-app.include_router(auth_router,       prefix=f"/api/{version}/auth", tags=["auth"])
-app.include_router(match_router,      prefix=f"/api/{version}",      tags=["match"])
-app.include_router(problem_router,    prefix=f"/api/{version}",      tags=["problem"])
-app.include_router(testcase_router,   prefix=f"/api/{version}",      tags=["testcase"])
-app.include_router(submission_router, prefix=f"/api/{version}",      tags=["submission"])
+app.include_router(auth_router, prefix=f"/api/{version}/auth", tags=["auth"])
+app.include_router(match_router, prefix=f"/api/{version}", tags=["match"])
+app.include_router(problem_router, prefix=f"/api/{version}", tags=["problem"])
+app.include_router(testcase_router, prefix=f"/api/{version}", tags=["testcase"])
+app.include_router(submission_router, prefix=f"/api/{version}", tags=["submission"])
 
 logger.info(f"Application startup complete - API version: {version}")

@@ -2,8 +2,8 @@ from pydantic import UUID4
 from sqlmodel import select, update
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from src.data.schemas import User, UserCreateModel, UserRole
 from src.business.services.auth_util import generate_password_hash
+from src.data.schemas import User, UserCreateModel, UserRole
 
 
 class UserService:

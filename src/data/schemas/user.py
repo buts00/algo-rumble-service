@@ -1,35 +1,42 @@
-import os
-from enum import Enum as PyEnum
-
-from sqlalchemy import Column, Enum, Integer, String
-from sqlalchemy.dialects.postgresql import INTEGER as pg_INTEGER
+from sqlalchemy import Column, String
+from sqlalchemy.dialects.postgresql import INTEGER
 from sqlmodel import Field
 
 from src.data.schemas.base import BaseModel
-
-# Use a different column type for INTEGER in tests (SQLite compatibility)
-if os.environ.get("TESTING") == "True":
-    INTEGER_TYPE = Integer
-else:
-    INTEGER_TYPE = pg_INTEGER
-
-
-class UserRole(str, PyEnum):
-    USER = "user"
-    ADMIN = "admin"
-    MODERATOR = "moderator"
+from src.data.schemas.enums import UserRole
 
 
 class User(BaseModel, table=True):
+    """Database model for a user."""
+
     __tablename__ = "users"
 
-    username: str = Field(sa_column=Column(String(50), unique=True))
-    password_hash: str = Field(exclude=True)
-    role: UserRole = Field(sa_column=Column(Enum(UserRole), default=UserRole.USER))
-    rating: int = Field(default=1000, sa_column=Column(INTEGER_TYPE, default=1000))
-    country_code: str = Field(sa_column=Column(String(5)))
+    username: str = Field(
+        sa_column=Column(String(50), unique=True, nullable=False),
+        description="Unique username for the user."
+    )
+    password_hash: str = Field(
+        sa_column=Column(String(256), nullable=False),
+        exclude=True,
+        description="Hashed user password."
+    )
+    role: UserRole = Field(
+        sa_column=Column(UserRole, default=UserRole.USER, nullable=False),
+        description="User role in the system."
+    )
+    rating: int = Field(
+        default=1000,
+        sa_column=Column(INTEGER, default=1000, nullable=False),
+        description="User's rating for matchmaking."
+    )
+    country_code: str = Field(
+        sa_column=Column(String(2), nullable=False),
+        description="ISO 3166-1 alpha-2 country code."
+    )
     refresh_token: str = Field(
-        sa_column=Column(String(500), nullable=True, default=None)
+        sa_column=Column(String(500), nullable=True, default=None),
+        exclude=True,
+        description="JWT refresh token for the user."
     )
 
     def __repr__(self):

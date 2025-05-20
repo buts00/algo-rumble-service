@@ -2,10 +2,10 @@ from abc import ABC, abstractmethod
 
 from fastapi import Depends, HTTPException, Request, status
 
-from src.data.schemas import UserBaseResponse
-from src.data.repositories import RedisClient, get_redis_client
 from src.business.services.auth import UserService
 from src.business.services.auth_util import decode_token
+from src.data.repositories import RedisClient, get_redis_client
+from src.data.schemas import UserBaseResponse
 
 
 class TokenFromCookie(ABC):
