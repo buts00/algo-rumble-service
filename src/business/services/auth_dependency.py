@@ -1,8 +1,6 @@
 from fastapi import Depends, HTTPException, Request, status
 from starlette.websockets import WebSocket, WebSocketDisconnect
-
 from src.data.schemas import UserBaseResponse
-
 
 class TokenFromCookie:
     def __init__(self, cookie_name: str = "access_token"):
@@ -32,8 +30,11 @@ class TokenFromCookie:
 
         return token_data
 
-
 AccessTokenFromCookie = TokenFromCookie
+
+class RefreshTokenFromCookie(TokenFromCookie):
+    def __init__(self):
+        super().__init__(cookie_name="refresh_token")
 
 def get_current_user(token_data: dict = Depends(AccessTokenFromCookie())) -> UserBaseResponse:
     try:
@@ -42,5 +43,5 @@ def get_current_user(token_data: dict = Depends(AccessTokenFromCookie())) -> Use
     except Exception:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Could not validate user",
+            detail="Could not validate user"
         )
