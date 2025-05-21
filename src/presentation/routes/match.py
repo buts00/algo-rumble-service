@@ -1,7 +1,6 @@
-import uuid
-
 from fastapi import (APIRouter, BackgroundTasks, Depends, WebSocket,
                      WebSocketDisconnect)
+from pydantic import UUID4
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.business.services.auth_dependency import (AccessTokenFromCookie,
@@ -67,7 +66,7 @@ async def accept_match(
     description="Declines a pending match for the authenticated user.",
 )
 async def decline_match(
-    match_id: uuid.UUID,
+    match_id: UUID4,
     db: AsyncSession = Depends(get_session),
     current_user: UserBaseResponse = Depends(get_current_user),
 ):
@@ -113,7 +112,7 @@ async def get_match_history(
     description="Returns details of a specific match, if the user is a participant.",
 )
 async def get_match_details(
-    match_id: uuid.UUID,
+    match_id: UUID4,
     db: AsyncSession = Depends(get_session),
     current_user: UserBaseResponse = Depends(get_current_user),
 ):
@@ -133,8 +132,8 @@ async def get_match_details(
     description="Marks a match as completed with the specified winner, if the user is a participant.",
 )
 async def complete_match(
-    match_id: uuid.UUID,
-    winner_id: uuid.UUID,
+    match_id: UUID4,
+    winner_id: UUID4,
     db: AsyncSession = Depends(get_session),
     current_user: UserBaseResponse = Depends(get_current_user),
 ):
@@ -183,7 +182,7 @@ async def cancel_find_match(
 @router.websocket("/match/ws/{user_id}", name="Match notifications")
 async def websocket_endpoint(
     websocket: WebSocket,
-    user_id: uuid.UUID,
+    user_id: UUID4,
     token_data: dict = Depends(AccessTokenFromCookie()),
 ):
     if str(user_id) != token_data["user"]["id"]:

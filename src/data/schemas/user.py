@@ -1,8 +1,6 @@
-from sqlalchemy import Column, String
-from sqlalchemy.dialects.postgresql import INTEGER, UUID
+from sqlalchemy import Column, String, INTEGER
 from sqlmodel import Field
 from pydantic import UUID4
-import uuid
 
 from src.data.schemas.base import BaseModel
 
@@ -14,7 +12,7 @@ class User(BaseModel, table=True):
 
     id: UUID4 = Field(
         sa_column=Column(
-            UUID, nullable=False, primary_key=True, default=uuid.uuid4, index=True
+            UUID4, nullable=False, primary_key=True, default=UUID4, index=True
         ),
         description="Unique identifier for the user."
     )

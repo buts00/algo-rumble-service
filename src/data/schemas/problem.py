@@ -1,4 +1,3 @@
-import uuid
 from datetime import datetime
 from typing import List, Optional
 
@@ -19,7 +18,7 @@ class Problem(SQLModel, table=True):
 
     id: UUID4 = Field(
         sa_column=Column(
-            UUID, nullable=False, primary_key=True, default=uuid.uuid4, index=True
+            UUID, nullable=False, primary_key=True, default=UUID4, index=True
         )
     )
 

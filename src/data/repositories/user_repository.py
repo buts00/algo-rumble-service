@@ -1,6 +1,6 @@
 from typing import List
-from uuid import UUID
 
+from pydantic import UUID4
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -11,7 +11,7 @@ from src.errors import DatabaseException, ResourceNotFoundException
 user_logger = logger.getChild("user")
 
 
-async def get_user_by_id(db: AsyncSession, user_id: UUID) -> User:
+async def get_user_by_id(db: AsyncSession, user_id: UUID4) -> User:
     """Get a user by ID from the database."""
     try:
         result = await db.execute(select(User).where(User.id == user_id))
@@ -25,7 +25,7 @@ async def get_user_by_id(db: AsyncSession, user_id: UUID) -> User:
         raise DatabaseException(detail="Failed to retrieve user due to database error")
 
 
-async def get_users_by_ids(db: AsyncSession, ids: List[UUID]) -> List[User]:
+async def get_users_by_ids(db: AsyncSession, ids: List[UUID4]) -> List[User]:
     """Get users by their IDs from the database."""
     try:
         result = await db.execute(select(User).where(User.id.in_(ids)))

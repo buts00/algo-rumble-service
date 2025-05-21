@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from pydantic.v1 import UUID4
+from pydantic import UUID4
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.business.services.match_rating import RatingService

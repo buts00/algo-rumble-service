@@ -1,13 +1,12 @@
 import os
 import time
-import uuid
 
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import UUID4
 from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.responses import Response
 
 from src.presentation.routes import (
     auth_router,
@@ -24,7 +23,7 @@ from src.presentation.middleware.rate_limit import RateLimitMiddleware
 
 class LoggingMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
-        request_id = str(uuid.uuid4())
+        request_id = str(UUID4())
         request.state.request_id = request_id
 
         logger.info(

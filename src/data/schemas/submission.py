@@ -1,10 +1,10 @@
-from uuid import UUID
+from pydantic import UUID4
 
 from pydantic import BaseModel
 
 
 class SubmissionCreate(BaseModel):
-    user_id: UUID
-    match_id: UUID
+    user_id: UUID4
+    match_id: UUID4
     code: str
     language: str

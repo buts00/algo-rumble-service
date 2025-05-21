@@ -1,7 +1,7 @@
-import uuid
 from typing import List
 
 from fastapi import APIRouter, Depends
+from pydantic import UUID4
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.config import logger
@@ -61,7 +61,7 @@ async def create_problem(
     description="Retrieves a problem by its ID.",
 )
 async def get_problem(
-    problem_id: uuid.UUID,
+    problem_id: UUID4,
     db: AsyncSession = Depends(get_session),
 ):
     """Retrieve a problem by its unique ID."""
@@ -76,7 +76,7 @@ async def get_problem(
     description="Updates a problem's metadata or content.",
 )
 async def update_problem(
-    problem_id: uuid.UUID,
+    problem_id: UUID4,
     problem_update: ProblemUpdate,
     db: AsyncSession = Depends(get_session),
 ):
@@ -92,7 +92,7 @@ async def update_problem(
     description="Deletes a problem and its associated data from DigitalOcean Spaces.",
 )
 async def delete_problem(
-    problem_id: uuid.UUID,
+    problem_id: UUID4,
     db: AsyncSession = Depends(get_session),
 ):
     """Delete a problem and its associated data."""

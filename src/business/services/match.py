@@ -1,10 +1,9 @@
 import asyncio
 import json
-import uuid
 from datetime import datetime, timedelta, timezone
 from typing import List, Optional
 
-from pydantic.v1 import UUID4
+from pydantic import UUID4
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from src.config import logger
@@ -34,7 +33,7 @@ class MatchService:
     def __init__(self, redis_client: RedisClient = None):
         self.redis_client = redis_client or get_redis_client()
 
-    async def add_player_to_queue(self, user_id: uuid.UUID, rating: int) -> bool:
+    async def add_player_to_queue(self, user_id: UUID4, rating: int) -> bool:
         """
         Add a player to the matchmaking queue in Redis.
         Returns True if added, False if already in queue.
@@ -58,7 +57,7 @@ class MatchService:
         match_logger.info(f"Player {user_id} added to queue.")
         return True
 
-    async def remove_player_from_queue(self, user_id: uuid.UUID) -> bool:
+    async def remove_player_from_queue(self, user_id: UUID4) -> bool:
         """
         Remove a player from the matchmaking queue in Redis.
         Returns True if removed, False if not found.
@@ -178,7 +177,7 @@ class MatchService:
     @staticmethod
     async def select_problem_for_match(
         db: AsyncSession, player1_rating: int, player2_rating: int
-    ) -> Optional[uuid.UUID]:
+    ) -> Optional[UUID4]:
         """
         Select a problem for a match based on player ratings.
         """
@@ -294,7 +293,7 @@ class MatchService:
 
     @staticmethod
     async def send_accept_status(
-        user_id: str, match_id: uuid.UUID, status: str
+        user_id: str, match_id: UUID4, status: str
     ) -> None:
         """
         Send match acceptance status to a user.
@@ -353,7 +352,7 @@ class MatchService:
         """
         Find a match for a user.
         """
-        user_uuid = uuid.UUID(user_id)
+        user_uuid = UUID4(user_id)
         if user_uuid != current_user.id:
             raise AuthorizationException("You can only find matches for yourself")
         user = await get_user_by_id(db, user_uuid)
@@ -488,7 +487,7 @@ class MatchService:
         """
         Cancel match search for a user.
         """
-        removed = await self.remove_player_from_queue(uuid.UUID(user_id))
+        removed = await self.remove_player_from_queue(UUID4(user_id))
         if not removed:
             raise BadRequestException("Player not in queue")
         return {"message": "Match search cancelled successfully"}

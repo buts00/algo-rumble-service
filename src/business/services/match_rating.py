@@ -1,6 +1,6 @@
 import logging
 from typing import Tuple, Union
-from pydantic.v1 import UUID4
+from pydantic import UUID4
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -135,7 +135,7 @@ class RatingService:
 
     @staticmethod
     async def fetch_players_and_validate(
-            db: AsyncSession, player1_id: Union[UUID4, str], player2_id: Union[UUID4, str]
+            db: AsyncSession, player1_id: UUID4, player2_id: UUID4
     ) -> Tuple[User | None, User | None, str, str]:
         """
         Fetch players from the database and validate their existence.

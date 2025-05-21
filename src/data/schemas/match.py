@@ -1,4 +1,3 @@
-import uuid
 from datetime import datetime
 from enum import Enum
 from typing import Optional
@@ -6,7 +5,6 @@ from typing import Optional
 from pydantic import UUID4, BaseModel
 from sqlalchemy import Column, DateTime
 from sqlalchemy import Enum as SQLEnum
-from sqlalchemy.dialects.postgresql import UUID
 from sqlmodel import Field, SQLModel
 
 
@@ -40,13 +38,13 @@ class Match(SQLModel, table=True):
 
     id: UUID4 = Field(
         sa_column=Column(
-            UUID, nullable=False, primary_key=True, default=uuid.uuid4, index=True
+            UUID4, nullable=False, primary_key=True, default=UUID4, index=True
         )
     )
-    player1_id: UUID4 = Field(sa_column=Column(UUID, nullable=False))
-    player2_id: UUID4 = Field(sa_column=Column(UUID, nullable=False))
-    winner_id: Optional[UUID4] = Field(sa_column=Column(UUID, nullable=True))
-    problem_id: Optional[UUID4] = Field(sa_column=Column(UUID, nullable=True))
+    player1_id: UUID4 = Field(sa_column=Column(UUID4, nullable=False))
+    player2_id: UUID4 = Field(sa_column=Column(UUID4, nullable=False))
+    winner_id: Optional[UUID4] = Field(sa_column=Column(UUID4, nullable=True))
+    problem_id: Optional[UUID4] = Field(sa_column=Column(UUID4, nullable=True))
     status: MatchStatus = Field(
         sa_column=Column(
             SQLEnum(MatchStatus), nullable=False, default=MatchStatus.CREATED

@@ -1,7 +1,7 @@
 import json
 from typing import Any, Dict, List
 
-from pydantic.v1 import UUID4
+from pydantic import UUID4
 from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 

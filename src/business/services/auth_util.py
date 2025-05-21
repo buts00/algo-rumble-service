@@ -1,9 +1,9 @@
-import uuid
 from datetime import datetime, timedelta
 from typing import Any
 
 import jwt
 from passlib.context import CryptContext
+from pydantic import UUID4
 
 from src.config import Config
 
@@ -28,7 +28,7 @@ def create_access_token(
     payload = {
         "user": user_data,
         "exp": datetime.now() + expiry,
-        "jti": str(uuid.uuid4()),
+        "jti": str(UUID4()),
         "is_refresh": False,
     }
 
@@ -45,7 +45,7 @@ def create_refresh_token(
     payload = {
         "user": user_data,
         "exp": datetime.now() + expiry,
-        "jti": str(uuid.uuid4()),
+        "jti": str(UUID4()),
         "is_refresh": True,
     }
 
