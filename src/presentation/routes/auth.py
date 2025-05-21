@@ -157,7 +157,7 @@ def set_auth_cookies(response: Response, access_token: str, refresh_token: str) 
         max_age=Config.JWT_ACCESS_TOKEN_EXPIRY,
         httponly=True,
         secure=True,
-        samesite="strict",
+        samesite="none",
     )
     response.set_cookie(
         key="refresh_token",
@@ -165,5 +165,5 @@ def set_auth_cookies(response: Response, access_token: str, refresh_token: str) 
         max_age=Config.JWT_REFRESH_TOKEN_EXPIRY,
         httponly=True,
         secure=True,
-        samesite="strict",
+        samesite="none",
     )
