@@ -68,7 +68,7 @@ async def login(
 
 
 @auth_router.get(
-    "/refresh-token",
+    "/refresh",
     summary="Refresh JWT tokens",
     description="Refreshes access and refresh tokens using the refresh token cookie, adding the old token to a Redis blocklist.",
 )
