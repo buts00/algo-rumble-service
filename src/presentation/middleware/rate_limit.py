@@ -1,35 +1,29 @@
-from fastapi import Request
-from fastapi.responses import JSONResponse
+from fastapi import HTTPException, Request
 from starlette.middleware.base import BaseHTTPMiddleware
 from src.data.repositories.redis_dependency import get_redis_client
 
-
 class RateLimitMiddleware(BaseHTTPMiddleware):
-    """Rate limiting middleware to restrict requests per client."""
-
     def __init__(self, app, limit: int = 100, window: int = 60):
         super().__init__(app)
-        self.limit = limit  # Max requests per window
-        self.window = window  # Window in seconds
+        self.limit = limit  # Max requests allowed in the window
+        self.window = window  # Time window in seconds
 
     async def dispatch(self, request: Request, call_next):
-        redis = await get_redis_client()
+        redis = get_redis_client()  # Synchronous call, no 'await'
         client_ip = request.client.host
         key = f"rate_limit:{client_ip}"
 
         # Get current request count
-        current_count = await redis.get(key)  # Await the coroutine
-        current_count = int(current_count or 0)  # Handle None, decode bytes if needed
+        count = await redis.get(key)
+        if count is None:
+            # First request, set initial count
+            await redis.set(key, 1, ex=self.window)
+        elif int(count) >= self.limit:
+            raise HTTPException(status_code=429, detail="Rate limit exceeded")
+        else:
+            # Increment count
+            await redis.incr(key)
 
-        if current_count >= self.limit:
-            return JSONResponse(
-                status_code=429,
-                content={"detail": "Rate limit exceeded"}
-            )
-
-        # Increment count and set expiry
-        await redis.incr(key)
-        await redis.expire(key, self.window)
-
+        # Proceed with the request
         response = await call_next(request)
         return response
