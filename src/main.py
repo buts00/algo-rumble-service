@@ -82,10 +82,16 @@ app = FastAPI(
 # CORS: allow any vercel.app subdomain and localhost:3000 for development
 app.add_middleware(
     CORSMiddleware,
-    allow_origin_regex=r"^(https:\/\/.*\.vercel\.app|https:\/\/algo-rubmle\.vercel\.app|http:\/\/localhost:3000)$",
+    allow_origins=[
+        "https://algo-rubmle.vercel.app",
+        "http://localhost:3000",
+    ],
+    allow_origin_regex=r"https://.*\.algo-rubmle\.vercel\.app|https://.*\.algo-rumble\.vercel\.app",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["Access-Control-Allow-Origin"],
+    max_age=600,
 )
 
 # Request logging
