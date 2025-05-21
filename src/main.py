@@ -1,19 +1,25 @@
 import os
 import time
 import uuid
+
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.responses import Response
 
+from src.presentation.routes import (
+    auth_router,
+    match_router,
+    problem_router,
+    testcase_router,
+    submission_router,
+)
 from src.config import logger
 from src.data.repositories import get_redis_client, init_db
-from src.data.repositories.redis import redis_client
 from src.errors import register_exception_handlers
 from src.presentation.middleware.rate_limit import RateLimitMiddleware
-from src.presentation.routes import (auth_router, match_router, problem_router,
-                                     submission_router, testcase_router)
 
 
 class LoggingMiddleware(BaseHTTPMiddleware):
@@ -23,8 +29,7 @@ class LoggingMiddleware(BaseHTTPMiddleware):
 
         logger.info(
             f"Request started: {request.method} {request.url.path} - "
-            f"ID: {request_id} - Client: {request.client.host} - "
-            f"Origin: {request.headers.get('origin')}"
+            f"ID: {request_id} - Client: {request.client.host}"
         )
         start_time = time.time()
 
@@ -34,9 +39,7 @@ class LoggingMiddleware(BaseHTTPMiddleware):
             logger.info(
                 f"Request completed: {request.method} {request.url.path} - "
                 f"ID: {request_id} - Status: {response.status_code} - "
-                f"Time: {process_time:.4f}s - "
-                f"CORS Headers: {response.headers.get('access-control-allow-origin', 'none')}, "
-                f"Credentials: {response.headers.get('access-control-allow-credentials', 'none')}"
+                f"Time: {process_time:.4f}s"
             )
             return response
         except Exception as e:
@@ -56,26 +59,12 @@ async def life_span(app: FastAPI):
         try:
             await init_db()
             logger.info("Database initialized successfully")
-            await redis_client.connect()
-            logger.info("Redis connected successfully")
         except Exception as e:
-            logger.error(f"Failed to initialize database or Redis: {e}")
+            logger.error(f"Failed to initialize database: {e}")
             raise
     else:
-        logger.info("Skipping database and Redis initialization for tests")
-
-    # Log registered routes for debugging
-    logger.info("Registered routes:")
-    for route in app.routes:
-        logger.info(f"Route: {route.path} - Methods: {route.methods}")
-
+        logger.info("Skipping database initialization for tests")
     yield
-    if os.environ.get("TESTING") != "True":
-        try:
-            await redis_client.close()
-            logger.info("Redis connection closed")
-        except Exception as e:
-            logger.error(f"Failed to close Redis connection: {e}")
     logger.info("Server has been stopped")
 
 
@@ -88,43 +77,31 @@ app = FastAPI(
     lifespan=life_span,
 )
 
-# CORS: Explicitly list allowed origins
+# CORS: дозволити будь-який піддомен vercel.app та localhost:3000 для розробки
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "https://algo-rubmle.vercel.app",
-        "https://algo-rumble.vercel.app",
-        "http://localhost:3000",
-    ],
+    allow_origin_regex=r"^(https:\/\/.*\.vercel\.app|https:\/\/algo-rubmle\.vercel\.app|http:\/\/localhost:3000)$",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
-    expose_headers=["Access-Control-Allow-Origin", "Access-Control-Allow-Credentials"],
-    max_age=600,
 )
 
-# Request logging
+# Логування запитів
 app.add_middleware(LoggingMiddleware)
 
 # Rate limiting
-app.add_middleware(RateLimitMiddleware, limit=100, window=60)
+redis_client = get_redis_client()
+app.add_middleware(RateLimitMiddleware, redis_client=redis_client)
 logger.info("Rate limiting middleware added")
 
-# Exception handlers
+# Обробники помилок
 register_exception_handlers(app)
 
-
-# Health check endpoint
-@app.get("/health", summary="Health check", description="Verify the API is running")
-async def health_check():
-    return {"status": "healthy"}
-
-
-# Routes
-app.include_router(auth_router, prefix=f"/api/{version}/auth", tags=["auth"])
-app.include_router(match_router, prefix=f"/api/{version}", tags=["match"])
-app.include_router(problem_router, prefix=f"/api/{version}", tags=["problem"])
-app.include_router(testcase_router, prefix=f"/api/{version}", tags=["testcase"])
-app.include_router(submission_router, prefix=f"/api/{version}", tags=["submission"])
+# Маршрути
+app.include_router(auth_router,       prefix=f"/api/{version}/auth", tags=["auth"])
+app.include_router(match_router,      prefix=f"/api/{version}",      tags=["match"])
+app.include_router(problem_router,    prefix=f"/api/{version}",      tags=["problem"])
+app.include_router(testcase_router,   prefix=f"/api/{version}",      tags=["testcase"])
+app.include_router(submission_router, prefix=f"/api/{version}",      tags=["submission"])
 
 logger.info(f"Application startup complete - API version: {version}")
