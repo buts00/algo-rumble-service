@@ -1,8 +1,10 @@
+from fastapi import Depends
 from pydantic import UUID4
 from sqlmodel import select, update
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from src.business.services.auth_util import generate_password_hash
+from src.data.repositories import get_session
 from src.data.schemas import User, UserCreateModel
 
 
@@ -45,3 +47,6 @@ class UserService:
         )
         await session.execute(stmt)
         await session.commit()
+
+def get_user_service(session: AsyncSession = Depends(get_session)) -> UserService:
+    return UserService()
