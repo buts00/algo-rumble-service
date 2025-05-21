@@ -98,7 +98,7 @@ logger.info("Rate limiting middleware added")
 register_exception_handlers(app)
 
 # Маршрути
-app.include_router(auth_router,       prefix=f"/api/{version}/auth", tags=["auth"])
+app.include_router(auth_router,       prefix=f"/api/{version}", tags=["auth"])
 app.include_router(match_router,      prefix=f"/api/{version}",      tags=["match"])
 app.include_router(problem_router,    prefix=f"/api/{version}",      tags=["problem"])
 app.include_router(testcase_router,   prefix=f"/api/{version}",      tags=["testcase"])
