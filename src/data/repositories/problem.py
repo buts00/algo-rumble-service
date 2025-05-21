@@ -1,14 +1,13 @@
 import json
-import uuid
 from typing import Any, Dict, List
 
+from pydantic.v1 import UUID4
 from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.config import logger
-from src.data.repositories import upload_problem_to_s3, upload_testcase_to_s3
-from src.data.schemas import (Problem, ProblemCreate, ProblemResponse,
-                              TestCaseResponse)
+from src.data.repositories.s3 import upload_problem_to_s3, upload_testcase_to_s3
+from src.data.schemas import Problem, ProblemCreate, ProblemResponse, TestCaseResponse
 from src.errors import DatabaseException, ResourceNotFoundException
 
 problem_logger = logger.getChild("problem_repository")
@@ -21,7 +20,7 @@ async def create_problem_in_db(
     try:
         # Create problem in database
         db_problem = Problem(
-            id=uuid.uuid4(),
+            id=UUID4(),
             rating=problem_data.rating,
             topics=problem_data.topics,
             name=problem_data.problem.name,
@@ -62,7 +61,7 @@ async def create_problem_in_db(
 
 
 async def create_testcases_in_db(
-    db: AsyncSession, problem_id: uuid.UUID, testcases: List[Dict[str, str]]
+    db: AsyncSession, problem_id: UUID4, testcases: List[Dict[str, str]]
 ) -> TestCaseResponse:
     """Create test cases for a problem and upload them to DigitalOcean Spaces."""
     try:
@@ -74,7 +73,7 @@ async def create_testcases_in_db(
         # Create test cases in DigitalOcean Spaces
         testcase_ids = []
         for idx, tc in enumerate(testcases, 1):
-            testcase_id = uuid.uuid4()
+            testcase_id = UUID4()
             testcase_data_json = json.dumps(
                 {"input": tc["input"], "output": tc["output"]}
             )
@@ -95,7 +94,7 @@ async def create_testcases_in_db(
         raise DatabaseException(detail="Failed to create testcases")
 
 
-async def get_problem_by_id(db: AsyncSession, problem_id: uuid.UUID) -> ProblemResponse:
+async def get_problem_by_id(db: AsyncSession, problem_id: UUID4) -> ProblemResponse:
     """Retrieve a problem by its ID."""
     try:
         problem = await db.get(Problem, problem_id)
@@ -111,7 +110,7 @@ async def get_problem_by_id(db: AsyncSession, problem_id: uuid.UUID) -> ProblemR
 
 
 async def update_problem_in_db(
-    db: AsyncSession, problem_id: uuid.UUID, update_data: Dict[str, Any]
+    db: AsyncSession, problem_id: UUID4, update_data: Dict[str, Any]
 ) -> ProblemResponse:
     """Update a problem in the database and DigitalOcean Spaces."""
     try:
@@ -132,7 +131,7 @@ async def update_problem_in_db(
                 "name": problem.name,
                 "description": problem.description,
                 "time_limit": problem.time_limit,
-                "memory_limit": problem.memory_limit,
+                "memory_limit": problem.time_limit,
                 "input_description": problem.input_description,
                 "output_description": problem.output_description,
                 "examples": problem.examples,
@@ -152,7 +151,7 @@ async def update_problem_in_db(
         raise DatabaseException(detail="Failed to update problem")
 
 
-async def delete_problem_from_db(db: AsyncSession, problem_id: uuid.UUID) -> dict:
+async def delete_problem_from_db(db: AsyncSession, problem_id: UUID4) -> dict:
     """Delete a problem from the database and note that DigitalOcean Spaces cleanup is needed."""
     try:
         problem = await db.get(Problem, problem_id)

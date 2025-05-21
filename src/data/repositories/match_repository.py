@@ -1,5 +1,5 @@
 from datetime import datetime
-from pydantic.v1 import UUID4
+from pydantic import UUID4
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 

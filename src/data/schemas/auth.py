@@ -1,7 +1,6 @@
 from pydantic import BaseModel, Field, field_validator
-from pydantic.v1 import UUID4
+from pydantic import UUID4
 
-from src.data.schemas.enums import UserRole
 
 
 class UserBase(BaseModel):
@@ -33,7 +32,6 @@ class UserModel(UserBase):
     """Schema for user data with additional fields."""
 
     id: UUID4
-    role: UserRole = Field(default=UserRole.USER)
     rating: int = Field(default=1000, ge=0)
 
     model_config = {"from_attributes": True}
@@ -83,7 +81,6 @@ class UserBaseResponse(BaseModel):
 
     id: UUID4
     username: str
-    role: UserRole
 
     model_config = {"from_attributes": True}
 

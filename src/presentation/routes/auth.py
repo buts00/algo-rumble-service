@@ -142,7 +142,7 @@ async def revoke_token(
 
 def generate_tokens_for_user(user) -> tuple[str, str]:
     access_token = create_access_token(
-        {"id": str(user.id), "username": user.username, "role": user.role}
+        {"id": str(user.id), "username": user.username}
     )
     refresh_token = create_refresh_token(
         {"id": str(user.id), "username": user.username}

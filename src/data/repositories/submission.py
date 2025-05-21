@@ -1,7 +1,7 @@
 import boto3
 import requests
 from botocore.exceptions import ClientError
-from pydantic.v1 import UUID4
+from pydantic import UUID4
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 

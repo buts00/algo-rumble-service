@@ -1,11 +1,10 @@
 from sqlalchemy import Column, String
 from sqlalchemy.dialects.postgresql import INTEGER, UUID
 from sqlmodel import Field
-from pydantic.v1 import UUID4
+from pydantic import UUID4
 import uuid
 
 from src.data.schemas.base import BaseModel
-from src.data.schemas.enums import UserRole
 
 
 class User(BaseModel, table=True):
@@ -27,10 +26,6 @@ class User(BaseModel, table=True):
         sa_column=Column(String(256), nullable=False),
         exclude=True,
         description="Hashed user password.",
-    )
-    role: UserRole = Field(
-        sa_column=Column(UserRole, default=UserRole.USER, nullable=False),
-        description="User role in the system.",
     )
     rating: int = Field(
         default=1000,

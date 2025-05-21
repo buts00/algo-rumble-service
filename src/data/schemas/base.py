@@ -1,5 +1,5 @@
 from datetime import datetime
-from pydantic.v1 import UUID4
+from pydantic import UUID4
 from sqlalchemy.dialects.postgresql import UUID
 from sqlmodel import Column, Field, SQLModel
 

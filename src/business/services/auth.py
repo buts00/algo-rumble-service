@@ -3,7 +3,7 @@ from sqlmodel import select, update
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from src.business.services.auth_util import generate_password_hash
-from src.data.schemas import User, UserCreateModel, UserRole
+from src.data.schemas import User, UserCreateModel
 
 
 class UserService:
@@ -25,7 +25,6 @@ class UserService:
         new_user = User(
             **user_data_dict,
             password_hash=generate_password_hash(password),
-            role=UserRole.USER,
             rating=1000,
         )
 

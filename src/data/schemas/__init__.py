@@ -8,12 +8,11 @@ from .problem import (Problem, ProblemCreate, ProblemResponse,
                       ProblemSelectionParams, ProblemUpdate)
 from .submission import SubmissionCreate
 from .testcase import TestCase, TestCaseCreate, TestCaseResponse
-from .user import User, UserRole
+from .user import User
 
 __all__ = [
     "BaseModel",
     "User",
-    "UserRole",
     "Match",
     "MatchStatus",
     "FindMatchRequest",
