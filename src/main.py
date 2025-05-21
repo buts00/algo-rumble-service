@@ -60,6 +60,12 @@ async def life_span(app: FastAPI):
             raise
     else:
         logger.info("Skipping database and Redis initialization for tests")
+
+    # Log registered routes for debugging
+    logger.info("Registered routes:")
+    for route in app.routes:
+        logger.info(f"Route: {route.path} - Methods: {route.methods}")
+
     yield
     if os.environ.get("TESTING") != "True":
         try:
@@ -79,14 +85,14 @@ app = FastAPI(
     lifespan=life_span,
 )
 
-# CORS: allow any vercel.app subdomain and localhost:3000 for development
+# CORS: Explicitly list allowed origins to avoid duplicate headers
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "https://algo-rubmle.vercel.app",
+        "https://algo-rumble.vercel.app",
         "http://localhost:3000",
     ],
-    allow_origin_regex=r"https://.*\.algo-rubmle\.vercel\.app",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -104,8 +110,15 @@ logger.info("Rate limiting middleware added")
 # Exception handlers
 register_exception_handlers(app)
 
+
+# Health check endpoint
+@app.get("/health", summary="Health check", description="Verify the API is running")
+async def health_check():
+    return {"status": "healthy"}
+
+
 # Routes
-app.include_router(auth_router, prefix=f"/api/{version}", tags=["auth"])
+app.include_router(auth_router, prefix=f"/api/{version}/auth", tags=["auth"])
 app.include_router(match_router, prefix=f"/api/{version}", tags=["match"])
 app.include_router(problem_router, prefix=f"/api/{version}", tags=["problem"])
 app.include_router(testcase_router, prefix=f"/api/{version}", tags=["testcase"])
