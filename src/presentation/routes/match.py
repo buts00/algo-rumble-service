@@ -87,7 +87,7 @@ async def get_active_match(
     current_user: UserBaseResponse = Depends(get_current_user),
 ):
     match_logger.info(f"Active match request for user ID: {current_user.id}")
-    return await MatchService.get_active_match_service(str(current_user.id), db)
+    return await MatchService.get_active_match_service(db)
 
 
 @router.get(
@@ -103,7 +103,7 @@ async def get_match_history(
 ):
     match_logger.info(f"Match history request for user ID: {current_user.id}")
     return await MatchService.get_match_history_service(
-        str(current_user.id), limit, offset, db
+        limit, offset, db
     )
 
 
@@ -118,7 +118,7 @@ async def get_match_details(
     current_user: UserBaseResponse = Depends(get_current_user),
 ):
     match_logger.info(f"Match details request for match ID: {match_id}")
-    match = await MatchService.get_match_details_service(str(match_id), db)
+    match = await MatchService.get_match_details_service(db)
     if str(current_user.id) not in [str(match.player1_id), str(match.player2_id)]:
         match_logger.warning(
             f"Unauthorized details request: {current_user.id} not in match {match_id}"
@@ -139,13 +139,13 @@ async def complete_match(
     current_user: UserBaseResponse = Depends(get_current_user),
 ):
     match_logger.info(f"Match complete request for match ID: {match_id}")
-    match = await MatchService.get_match_details_service(str(match_id), db)
+    match = await MatchService.get_match_details_service(db)
     if str(current_user.id) not in [str(match.player1_id), str(match.player2_id)]:
         match_logger.warning(
             f"Unauthorized complete request: {current_user.id} not in match {match_id}"
         )
         raise AuthorizationException("Not a participant in this match")
-    return await MatchService.complete_match_service(str(match_id), str(winner_id), db)
+    return await MatchService.complete_match_service(str(winner_id), db)
 
 
 @router.post(
@@ -164,7 +164,7 @@ async def capitulate_match(
             f"Unauthorized capitulate request: {request.loser_id} != {current_user.id}"
         )
         raise AuthorizationException("Can only capitulate for yourself")
-    await MatchService.capitulate_match_logic(db, request.match_id, request.loser_id)
+    await MatchService.capitulate_match_logic(request.match_id, request.loser_id)
     return {"message": "Match capitulated successfully"}
 
 

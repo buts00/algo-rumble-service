@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 from typing import List, Optional
 
-from pydantic import BaseModel
+from pydantic import UUID4, BaseModel
 from sqlalchemy import ARRAY, Column, String
 from sqlalchemy.dialects.postgresql import UUID
 from sqlmodel import Field, SQLModel
@@ -17,7 +17,7 @@ class Problem(SQLModel, table=True):
 
     __tablename__ = "problems"
 
-    id: uuid.UUID = Field(
+    id: UUID4 = Field(
         sa_column=Column(
             UUID, nullable=False, primary_key=True, default=uuid.uuid4, index=True
         )
@@ -80,7 +80,7 @@ class ProblemUpdate(BaseModel):
 class ProblemResponse(ProblemBase):
     """Schema for problem responses"""
 
-    id: uuid.UUID
+    id: UUID4
     created_at: datetime
     updated_at: datetime
     problem: Optional[ProblemDetail] = None
@@ -95,4 +95,4 @@ class ProblemSelectionParams(BaseModel):
     player1_rating: int
     player2_rating: int
     preferred_topics: Optional[List[str]] = None
-    exclude_problem_ids: Optional[List[uuid.UUID]] = None
+    exclude_problem_ids: Optional[List[UUID4]] = None

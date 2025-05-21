@@ -1,6 +1,8 @@
 from sqlalchemy import Column, String
-from sqlalchemy.dialects.postgresql import INTEGER
+from sqlalchemy.dialects.postgresql import INTEGER, UUID
 from sqlmodel import Field
+from pydantic.v1 import UUID4
+import uuid
 
 from src.data.schemas.base import BaseModel
 from src.data.schemas.enums import UserRole
@@ -11,6 +13,12 @@ class User(BaseModel, table=True):
 
     __tablename__ = "users"
 
+    id: UUID4 = Field(
+        sa_column=Column(
+            UUID, nullable=False, primary_key=True, default=uuid.uuid4, index=True
+        ),
+        description="Unique identifier for the user."
+    )
     username: str = Field(
         sa_column=Column(String(50), unique=True, nullable=False),
         description="Unique username for the user.",

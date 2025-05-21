@@ -2,7 +2,6 @@ import logging
 from logging.config import dictConfig
 from pathlib import Path
 
-from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -53,8 +52,8 @@ class Settings(BaseSettings):
     LOG_LEVEL: str = "INFO"
     LOG_FILE: str = "logs/app.log"
 
-    MATCH_ACCEPT_TIMEOUT_SECONDS: int = Field(30, env="MATCH_ACCEPT_TIMEOUT_SECONDS")
-    MATCH_DURATION_SECONDS: int = Field(1800, env="MATCH_DURATION_SECONDS")
+    MATCH_ACCEPT_TIMEOUT_SECONDS: int
+    MATCH_DURATION_SECONDS: int
 
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -70,7 +69,7 @@ class Settings(BaseSettings):
 
     @property
     def API_BASE_URL(self) -> str:
-        return f"http://{self.API_SERVER_HOST}:{self.API_SERVER_PORT}"
+        return f"https://{self.API_SERVER_HOST}:{self.API_SERVER_PORT}"
 
     @property
     def REDIS_HOST(self) -> str:
@@ -97,7 +96,7 @@ Config = Settings()
 # instead of Settings.MATCH_ACCEPT_TIMEOUT_SECONDS and Settings.MATCH_DURATION_SECONDS
 # elsewhere in the codebase, as these are instance attributes.
 
-# Ensure logs directory exists
+# Ensure the logs directory exists
 log_dir = Path("logs")
 log_dir.mkdir(exist_ok=True)
 

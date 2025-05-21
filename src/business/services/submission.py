@@ -1,6 +1,6 @@
-import uuid
 from datetime import datetime
 
+from pydantic.v1 import UUID4
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.business.services.match_rating import RatingService
@@ -45,10 +45,9 @@ class SubmissionService:
         )
 
         try:
-            # Convert user_id and match_id to UUID
             try:
-                user_uuid = uuid.UUID(user_id)
-                match_uuid = uuid.UUID(match_id)
+                user_uuid = UUID4(user_id)
+                match_uuid = UUID4(match_id)
             except ValueError:
                 submission_logger.warning(
                     f"Solution submission failed: Invalid user ID format: {user_id}"
@@ -58,7 +57,7 @@ class SubmissionService:
             # Get the match
             match = await get_match_by_id(db, match_uuid)
 
-            # Check if user is part of the match
+            # Check if the user is part of the match
             if match.player1_id != user_uuid and match.player2_id != user_uuid:
                 submission_logger.warning(
                     f"Solution submission failed: User not in match: User ID {user_uuid}, "
@@ -68,7 +67,7 @@ class SubmissionService:
                     detail="Not authorized to submit solution for this match"
                 )
 
-            # Check if match is active
+            # Check if the match is active
             if match.status != MatchStatus.ACTIVE:
                 submission_logger.warning(
                     f"Solution submission failed: Match not active: ID {match_id}, "
@@ -98,7 +97,7 @@ class SubmissionService:
             # Run the solution against test cases
             is_correct = await check_solution(code, language, test_cases)
 
-            # If solution is correct, end the match and update ratings
+            # If a solution is correct, end the match and update ratings
             if is_correct:
                 match.status = MatchStatus.COMPLETED
                 match.winner_id = user_uuid
@@ -164,7 +163,7 @@ class SubmissionService:
                     "message": "Solution correct, match completed",
                 }
             else:
-                # Notify user about incorrect solution
+                # Notify user about an incorrect solution
                 await manager.send_match_notification(
                     user_id,
                     {

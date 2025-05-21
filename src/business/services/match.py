@@ -1,22 +1,27 @@
 import asyncio
 import json
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import List, Optional
 
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
+from pydantic.v1 import UUID4
+from sqlmodel.ext.asyncio.session import AsyncSession
 
 from src.config import logger
 from src.data.repositories import RedisClient, get_redis_client
-from src.data.repositories.match_repository import (finish_match_with_winner,
-                                                    get_match_by_id)
-from src.data.repositories.user_repository import get_users_by_ids
+from src.data.repositories.match_repository import (
+    create_match,
+    finish_match_with_winner,
+    get_active_or_pending_match,
+    get_expired_pending_matches,
+    get_match_by_id,
+    get_match_history,
+    select_problem_for_match,
+)
+from src.data.repositories.user_repository import get_users_by_ids, get_user_by_id
+from src.data.schemas import User
 from src.data.schemas.match import Match, MatchStatus, PlayerQueueEntry
-from src.data.schemas.problem import Problem
-from src.data.schemas.user import User
-from src.errors import (AuthorizationException, BadRequestException,
-                        ResourceNotFoundException)
+from src.errors import AuthorizationException, BadRequestException, ResourceNotFoundException
 from src.presentation.websocket import manager
 
 # Create a module-specific logger
@@ -35,7 +40,7 @@ class MatchService:
         Returns True if added, False if already in queue.
         """
         entry = PlayerQueueEntry(
-            user_id=user_id, rating=rating, timestamp=datetime.utcnow()
+            user_id=user_id, rating=rating, timestamp=datetime.now(timezone.utc)
         )
         # Check if user is already in queue
         existing = await self.redis_client.get(f"queue:user:{user_id}")
@@ -43,9 +48,9 @@ class MatchService:
             match_logger.info(f"Player {user_id} is already in the queue.")
             return False
 
-        # Add to Redis sorted set (score is timestamp)
+        # Add to Redis sorted a set (score is timestamp)
         await self.redis_client.zadd(
-            self.QUEUE_KEY, {json.dumps(entry.dict()): entry.timestamp.timestamp()}
+            self.QUEUE_KEY, {json.dumps(entry.model_dump()): entry.timestamp.timestamp()}
         )
         await self.redis_client.set(
             f"queue:user:{user_id}", "1", ex=3600
@@ -106,7 +111,7 @@ class MatchService:
             if best_match_idx != -1:
                 player2 = players[best_match_idx]
                 try:
-                    problem_id = await self.select_problem_for_match(
+                    problem_id = await select_problem_for_match(
                         db, player1.rating, player2.rating
                     )
                     new_match = Match(
@@ -114,16 +119,14 @@ class MatchService:
                         player2_id=player2.user_id,
                         problem_id=problem_id,
                         status=MatchStatus.PENDING,
-                        start_time=datetime.utcnow(),
+                        start_time=datetime.now(timezone.utc),
                     )
-                    db.add(new_match)
-                    await db.commit()
-                    await db.refresh(new_match)
+                    new_match = await create_match(db, new_match)
                     match_logger.info(
                         f"Match created: {new_match.id} between players {player1.user_id} and {player2.user_id}"
                     )
                     users = await get_users_by_ids(
-                        db, [str(player1.user_id), str(player2.user_id)]
+                        db, [player1.user_id, player2.user_id]
                     )
                     user_map = {u.id: u for u in users}
                     user1 = user_map.get(player1.user_id)
@@ -156,11 +159,12 @@ class MatchService:
                         )
                     # Remove players from Redis queue
                     await self.redis_client.zrem(
-                        self.QUEUE_KEY, json.dumps(player1.dict())
+                        self.QUEUE_KEY, json.dumps(player1.model_dump())
                     )
                     await self.redis_client.zrem(
-                        self.QUEUE_KEY, json.dumps(player2.dict())
+                        self.QUEUE_KEY, json.dumps(player2.model_dump())
                     )
+                    await self.redis_client.delete(f"queue:user:{player1.user_id}")
                     await self.redis_client.delete(f"queue:user:{player1.user_id}")
                     await self.redis_client.delete(f"queue:user:{player2.user_id}")
                     created_matches.append(new_match)
@@ -171,30 +175,18 @@ class MatchService:
                 i += 1
         return created_matches
 
+    @staticmethod
     async def select_problem_for_match(
-        self, db: AsyncSession, player1_rating: int, player2_rating: int
+        db: AsyncSession, player1_rating: int, player2_rating: int
     ) -> Optional[uuid.UUID]:
         """
         Select a problem for a match based on player ratings.
         """
-        try:
-            target_rating = (player1_rating + player2_rating) // 2
-            result = await db.execute(select(Problem).order_by(Problem.rating))
-            problems = result.scalars().all()
-            if not problems:
-                match_logger.warning("No problems found in database")
-                return None
-            closest_problem = min(problems, key=lambda p: abs(p.rating - target_rating))
-            match_logger.info(
-                f"Selected problem {closest_problem.id} with rating {closest_problem.rating} "
-                f"for match with target rating {target_rating}"
-            )
-            return closest_problem.id
-        except Exception as e:
-            match_logger.error(f"Error selecting problem: {str(e)}")
-            return None
+        match_logger.warning("This method is deprecated; use match_repository.select_problem_for_match instead.")
+        return await select_problem_for_match(db, player1_rating, player2_rating)
 
-    async def send_match_notification(self, user_id: str, data: dict) -> None:
+    @staticmethod
+    async def send_match_notification(user_id: str, data: dict) -> None:
         """
         Send a match notification to a user.
         """
@@ -206,38 +198,36 @@ class MatchService:
                 f"Error sending notification to user {user_id}: {str(e)}"
             )
 
+    @staticmethod
+    async def send_cancellation_notifications(
+        match: Match, match_id: UUID4, reason: str
+    ) -> None:
+        """
+        Send cancellation notifications to both players in a match.
+        """
+        try:
+            data = {"status": "cancelled", "match_id": str(match_id), "reason": reason}
+            await manager.send_match_notification(str(match.player1_id), data)
+            await manager.send_match_notification(str(match.player2_id), data)
+            match_logger.debug(
+                f"Cancellation notifications sent for match {match_id} with reason: {reason}"
+            )
+        except Exception as e:
+            match_logger.error(
+                f"Error sending cancellation notifications for match {match_id}: {str(e)}"
+            )
+
     async def cancel_expired_matches(self, db: AsyncSession) -> None:
         """
         Cancel matches that have been pending for too long.
         """
         try:
-            expiry_time = datetime.utcnow() - timedelta(minutes=5)
-            result = await db.execute(
-                select(Match).where(
-                    Match.status == MatchStatus.PENDING,
-                    Match.start_time < expiry_time,
-                )
-            )
-            pending_matches = result.scalars().all()
+            expiry_time = datetime.now(timezone.utc) - timedelta(minutes=5)
+            pending_matches = await get_expired_pending_matches(db, expiry_time)
             for match in pending_matches:
                 match.status = MatchStatus.CANCELLED
-                match.end_time = datetime.utcnow()
-                await self.send_match_notification(
-                    str(match.player1_id),
-                    {
-                        "status": "match_cancelled",
-                        "match_id": str(match.id),
-                        "reason": "Match expired",
-                    },
-                )
-                await self.send_match_notification(
-                    str(match.player2_id),
-                    {
-                        "status": "match_cancelled",
-                        "match_id": str(match.id),
-                        "reason": "Match expired",
-                    },
-                )
+                match.end_time = datetime.now(timezone.utc)
+                await self.send_cancellation_notifications(match, match.id, "timeout")
                 db.add(match)
                 match_logger.info(f"Cancelled expired match: {match.id}")
             await db.commit()
@@ -245,8 +235,9 @@ class MatchService:
         except Exception as e:
             match_logger.error(f"Error cancelling expired matches: {str(e)}")
 
+    @staticmethod
     async def capitulate_match_logic(
-        self, db: AsyncSession, match_id: uuid.UUID, loser_id: uuid.UUID
+        db: AsyncSession, match_id: UUID4, loser_id: UUID4
     ):
         """
         Handle match capitulation logic.
@@ -301,8 +292,9 @@ class MatchService:
             f"Match completed via capitulation: ID {match_id}, Winner: {winner.username}"
         )
 
+    @staticmethod
     async def send_accept_status(
-        self, user_id: str, match_id: uuid.UUID, status: str
+        user_id: str, match_id: uuid.UUID, status: str
     ) -> None:
         """
         Send match acceptance status to a user.
@@ -316,7 +308,7 @@ class MatchService:
         except Exception as e:
             match_logger.error(f"Failed to send accept status to {user_id}: {e}")
 
-    async def match_acceptance_timeout(self, db: AsyncSession, match_id: str) -> None:
+    async def match_acceptance_timeout(self, db: AsyncSession, match_id: UUID4) -> None:
         """
         Handle match acceptance timeout.
         """
@@ -324,24 +316,9 @@ class MatchService:
             match = await get_match_by_id(db, match_id)
             if match and match.status == MatchStatus.PENDING:
                 match.status = MatchStatus.CANCELLED
-                match.end_time = datetime.utcnow()
+                match.end_time = datetime.now(timezone.utc)
+                await self.send_cancellation_notifications(match, match_id, "timeout")
                 await db.commit()
-                await self.send_match_notification(
-                    str(match.player1_id),
-                    {
-                        "status": "cancelled",
-                        "match_id": str(match_id),
-                        "reason": "timeout",
-                    },
-                )
-                await self.send_match_notification(
-                    str(match.player2_id),
-                    {
-                        "status": "cancelled",
-                        "match_id": str(match_id),
-                        "reason": "timeout",
-                    },
-                )
                 match_logger.info(
                     f"Match {match_id} cancelled due to acceptance timeout"
                 )
@@ -350,7 +327,7 @@ class MatchService:
                 f"Error in match acceptance timeout for match {match_id}: {e}"
             )
 
-    async def match_draw_timeout(self, db: AsyncSession, match_id: str) -> None:
+    async def match_draw_timeout(self, db: AsyncSession, match_id: UUID4) -> None:
         """
         Handle match draw timeout.
         """
@@ -358,7 +335,7 @@ class MatchService:
             match = await get_match_by_id(db, match_id)
             if match and match.status == MatchStatus.ACTIVE:
                 match.status = MatchStatus.COMPLETED
-                match.end_time = datetime.utcnow()
+                match.end_time = datetime.now(timezone.utc)
                 await db.commit()
                 await self.send_match_notification(
                     str(match.player1_id), {"status": "draw", "match_id": str(match_id)}
@@ -379,8 +356,7 @@ class MatchService:
         user_uuid = uuid.UUID(user_id)
         if user_uuid != current_user.id:
             raise AuthorizationException("You can only find matches for yourself")
-        result = await db.execute(select(User).where(User.id == user_uuid))
-        user = result.scalar_one_or_none()
+        user = await get_user_by_id(db, user_uuid)
         if not user:
             raise ResourceNotFoundException("User not found")
         if await self.has_active_match(db, user_id):
@@ -396,7 +372,7 @@ class MatchService:
         )
         return {"message": "Player added to queue"}
 
-    async def accept_match_service(self, match_id: str, user_id: str, db: AsyncSession):
+    async def accept_match_service(self, match_id: UUID4, user_id: str, db: AsyncSession):
         """
         Accept a match.
         """
@@ -414,7 +390,7 @@ class MatchService:
         return {"message": "Match accepted successfully"}
 
     async def decline_match_service(
-        self, match_id: str, user_id: str, db: AsyncSession
+        self, match_id: UUID4, user_id: UUID4, db: AsyncSession
     ):
         """
         Decline a match.
@@ -424,32 +400,20 @@ class MatchService:
             raise ResourceNotFoundException("Match not found")
         if match.status != MatchStatus.PENDING:
             raise BadRequestException("Match is not in pending state")
-        if str(match.player1_id) != user_id and str(match.player2_id) != user_id:
+        if match.player1_id != user_id and match.player2_id != user_id:
             raise AuthorizationException("You are not a participant in this match")
         match.status = MatchStatus.CANCELLED
-        match.end_time = datetime.utcnow()
+        match.end_time = datetime.now(timezone.utc)
+        await self.send_cancellation_notifications(match, match_id, "declined")
         await db.commit()
-        await self.send_match_notification(
-            str(match.player1_id),
-            {"status": "cancelled", "match_id": str(match_id), "reason": "declined"},
-        )
-        await self.send_match_notification(
-            str(match.player2_id),
-            {"status": "cancelled", "match_id": str(match_id), "reason": "declined"},
-        )
         return {"message": "Match declined successfully"}
 
-    async def get_active_match_service(self, user_id: str, db: AsyncSession):
+    @staticmethod
+    async def get_active_match_service(user_id: str, db: AsyncSession):
         """
         Get active or pending match for a user.
         """
-        result = await db.execute(
-            select(Match).where(
-                (Match.player1_id == user_id) | (Match.player2_id == user_id),
-                Match.status.in_([MatchStatus.ACTIVE, MatchStatus.PENDING]),
-            )
-        )
-        match = result.scalar_one_or_none()
+        match = await get_active_or_pending_match(db, user_id)
         if not match:
             raise ResourceNotFoundException("No active match found")
         return {
@@ -460,19 +424,14 @@ class MatchService:
             "problem_id": str(match.problem_id) if match.problem_id else None,
         }
 
+    @staticmethod
     async def get_match_history_service(
-        self, user_id: str, limit: int, offset: int, db: AsyncSession
+        user_id: str, limit: int, offset: int, db: AsyncSession
     ):
         """
         Get match history for a user.
         """
-        result = await db.execute(
-            select(Match)
-            .where((Match.player1_id == user_id) | (Match.player2_id == user_id))
-            .offset(offset)
-            .limit(limit)
-        )
-        matches = result.scalars().all()
+        matches = await get_match_history(db, user_id, limit, offset)
         return [
             {
                 "match_id": str(match.id),
@@ -485,7 +444,8 @@ class MatchService:
             for match in matches
         ]
 
-    async def get_match_details_service(self, match_id: str, db: AsyncSession):
+    @staticmethod
+    async def get_match_details_service(match_id: UUID4, db: AsyncSession):
         """
         Get details of a match.
         """
@@ -501,8 +461,9 @@ class MatchService:
             "winner_id": str(match.winner_id) if match.winner_id else None,
         }
 
+    @staticmethod
     async def complete_match_service(
-        self, match_id: str, winner_id: str, db: AsyncSession
+        match_id: UUID4, winner_id: UUID4, db: AsyncSession
     ):
         """
         Complete a match with a winner.
@@ -514,11 +475,11 @@ class MatchService:
             raise ResourceNotFoundException("Match not found")
         if match.status != MatchStatus.ACTIVE:
             raise BadRequestException("Match is not active")
-        if str(match.player1_id) != winner_id and str(match.player2_id) != winner_id:
+        if match.player1_id != winner_id and match.player2_id != winner_id:
             raise AuthorizationException("Winner is not a participant in this match")
         await finish_match_with_winner(db, match_id, winner_id)
         loser_id = (
-            match.player2_id if str(match.player1_id) == winner_id else match.player1_id
+            match.player2_id if match.player1_id == winner_id else match.player1_id
         )
         await RatingService.update_ratings_after_match(db, winner_id, loser_id)
         return {"message": "Match completed successfully"}
@@ -532,16 +493,10 @@ class MatchService:
             raise BadRequestException("Player not in queue")
         return {"message": "Match search cancelled successfully"}
 
-    async def has_active_match(self, db: AsyncSession, user_id: str) -> bool:
+    @staticmethod
+    async def has_active_match(db: AsyncSession, user_id: str) -> bool:
         """
         Check if a user has an active or pending match.
         """
-        result = await db.execute(
-            select(Match).where(
-                (Match.player1_id == user_id) | (Match.player2_id == user_id),
-                Match.status.in_(
-                    [MatchStatus.ACTIVE, MatchStatus.PENDING, MatchStatus.CREATED]
-                ),
-            )
-        )
-        return result.scalars().first() is not None
+        match = await get_active_or_pending_match(db, user_id)
+        return match is not None

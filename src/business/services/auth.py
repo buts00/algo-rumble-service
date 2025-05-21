@@ -8,8 +8,8 @@ from src.data.schemas import User, UserCreateModel, UserRole
 
 class UserService:
     @staticmethod
-    async def get_user_by_id(id: UUID4, session: AsyncSession) -> User | None:
-        result = await session.execute(select(User).where(User.id == id))
+    async def get_user_by_id(user_id: UUID4, session: AsyncSession) -> User | None:
+        result = await session.execute(select(User).where(User.id == user_id))
         return result.scalar_one_or_none()
 
     @staticmethod

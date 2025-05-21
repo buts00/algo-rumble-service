@@ -1,6 +1,5 @@
-import uuid
 from datetime import datetime
-
+from pydantic.v1 import UUID4
 from sqlalchemy.dialects.postgresql import UUID
 from sqlmodel import Column, Field, SQLModel
 
@@ -10,12 +9,12 @@ class BaseModel(SQLModel):
 
     __abstract__ = True
 
-    id: uuid.UUID = Field(
+    id: UUID4 = Field(
         sa_column=Column(
             UUID(as_uuid=True),
             nullable=False,
             primary_key=True,
-            default=uuid.uuid4,
+            default=UUID4,
         ),
         description="Unique identifier of the entity.",
     )

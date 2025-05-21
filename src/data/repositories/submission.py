@@ -1,6 +1,7 @@
 import boto3
 import requests
 from botocore.exceptions import ClientError
+from pydantic.v1 import UUID4
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -12,7 +13,7 @@ from src.errors import ResourceNotFoundException
 submission_logger = logger.getChild("submission")
 
 
-async def get_match_by_id(db: AsyncSession, match_id: str) -> Match:
+async def get_match_by_id(db: AsyncSession, match_id: UUID4) -> Match:
     """
     Get a match by ID from the database.
     """
