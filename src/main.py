@@ -9,6 +9,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 
 from src.config import logger
 from src.data.repositories import get_redis_client, init_db
+from src.data.repositories.redis import redis_client
 from src.errors import register_exception_handlers
 from src.presentation.middleware.rate_limit import RateLimitMiddleware
 from src.presentation.routes import (auth_router, match_router, problem_router,
@@ -52,12 +53,20 @@ async def life_span(app: FastAPI):
         try:
             await init_db()
             logger.info("Database initialized successfully")
+            await redis_client.connect()
+            logger.info("Redis connected successfully")
         except Exception as e:
-            logger.error(f"Failed to initialize database: {e}")
+            logger.error(f"Failed to initialize database or Redis: {e}")
             raise
     else:
-        logger.info("Skipping database initialization for tests")
+        logger.info("Skipping database and Redis initialization for tests")
     yield
+    if os.environ.get("TESTING") != "True":
+        try:
+            await redis_client.close()
+            logger.info("Redis connection closed")
+        except Exception as e:
+            logger.error(f"Failed to close Redis connection: {e}")
     logger.info("Server has been stopped")
 
 
@@ -70,7 +79,7 @@ app = FastAPI(
     lifespan=life_span,
 )
 
-# CORS: дозволити будь-який піддомен vercel.app та localhost:3000 для розробки
+# CORS: allow any vercel.app subdomain and localhost:3000 for development
 app.add_middleware(
     CORSMiddleware,
     allow_origin_regex=r"^(https:\/\/.*\.vercel\.app|https:\/\/algo-rubmle\.vercel\.app|http:\/\/localhost:3000)$",
@@ -79,18 +88,17 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Логування запитів
+# Request logging
 app.add_middleware(LoggingMiddleware)
 
 # Rate limiting
-redis_client = get_redis_client()
-app.add_middleware(RateLimitMiddleware, redis_client=redis_client)
+app.add_middleware(RateLimitMiddleware, limit=100, window=60)
 logger.info("Rate limiting middleware added")
 
-# Обробники помилок
+# Exception handlers
 register_exception_handlers(app)
 
-# Маршрути
+# Routes
 app.include_router(auth_router, prefix=f"/api/{version}/auth", tags=["auth"])
 app.include_router(match_router, prefix=f"/api/{version}", tags=["match"])
 app.include_router(problem_router, prefix=f"/api/{version}", tags=["problem"])
