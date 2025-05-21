@@ -1,7 +1,7 @@
 from fastapi import Request
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
-from src.data.repositories.redis import get_redis_client
+from src.data.repositories.redis_dependency import get_redis_client
 
 
 class RateLimitMiddleware(BaseHTTPMiddleware):
