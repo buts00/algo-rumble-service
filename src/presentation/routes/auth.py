@@ -86,7 +86,7 @@ async def update_tokens(
         auth_logger.warning(f"User not found: ID {user_id}")
         raise AuthenticationException(detail="Invalid credentials")
 
-    redis_client.add_jti_to_blocklist(token_details["jti"])
+    await redis_client.add_jti_to_blocklist(token_details["jti"])
     access_token, refresh_token = generate_tokens_for_user(user)
     await user_service.update_refresh_token(user.id, refresh_token, session)
     set_auth_cookies(response, access_token, refresh_token)
@@ -118,6 +118,7 @@ async def get_current_user(
     "/logout",
     summary="Log out a user",
     description="Adds access and refresh tokens to a Redis blocklist and deletes the cookies.",
+    response_model=None,  # Add this
 )
 async def revoke_token(
     response: Response,
@@ -127,8 +128,8 @@ async def revoke_token(
 ):
     user_id = refresh_token_details["user"]["id"]
     auth_logger.info(f"Logout attempt for user ID: {user_id}")
-    redis_client.add_jti_to_blocklist(refresh_token_details["jti"])
-    redis_client.add_jti_to_blocklist(access_token_details["jti"])
+    await redis_client.add_jti_to_blocklist(refresh_token_details["jti"])
+    await redis_client.add_jti_to_blocklist(access_token_details["jti"])
     response = JSONResponse(content={"message": "Logged out successfully"})
     response.delete_cookie(
         key="access_token", httponly=True, secure=True, samesite="strict"
@@ -149,6 +150,32 @@ def generate_tokens_for_user(user) -> tuple[str, str]:
     )
     return access_token, refresh_token
 
+@auth_router.get(
+    "/refresh",
+    summary="Refresh JWT tokens",
+    description="Refreshes access and refresh tokens using the refresh token cookie, adding the old token to a Redis blocklist.",
+    response_model=None,  # Disable response model generation
+)
+async def update_tokens(
+    response: Response,
+    token_details: dict = Depends(RefreshTokenFromCookie()),
+    user_service: UserService = Depends(get_user_service),
+    redis_client: RedisClient = Depends(get_redis_client),
+    session: AsyncSession = Depends(get_session),
+):
+    user_id = token_details["user"]["id"]
+    auth_logger.info(f"Token refresh attempt for user ID: {user_id}")
+    user = await user_service.get_user_by_id(user_id, session)
+    if not user:
+        auth_logger.warning(f"User not found: ID {user_id}")
+        raise AuthenticationException(detail="Invalid credentials")
+
+    await redis_client.add_jti_to_blocklist(token_details["jti"])
+    access_token, refresh_token = generate_tokens_for_user(user)
+    await user_service.update_refresh_token(user.id, refresh_token, session)
+    set_auth_cookies(response, access_token, refresh_token)
+    auth_logger.info(f"Tokens refreshed for user: {user.username} (ID: {user.id})")
+    return {"message": "Tokens refreshed"}
 
 def set_auth_cookies(response: Response, access_token: str, refresh_token: str) -> None:
     response.set_cookie(
