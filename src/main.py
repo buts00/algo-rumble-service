@@ -86,7 +86,7 @@ app.add_middleware(
         "https://algo-rubmle.vercel.app",
         "http://localhost:3000",
     ],
-    allow_origin_regex=r"https://.*\.algo-rubmle\.vercel\.app|https://.*\.algo-rumble\.vercel\.app",
+    allow_origin_regex=r"https://.*\.algo-rubmle\.vercel\.app",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
