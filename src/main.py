@@ -23,7 +23,8 @@ class LoggingMiddleware(BaseHTTPMiddleware):
 
         logger.info(
             f"Request started: {request.method} {request.url.path} - "
-            f"ID: {request_id} - Client: {request.client.host}"
+            f"ID: {request_id} - Client: {request.client.host} - "
+            f"Origin: {request.headers.get('origin')}"
         )
         start_time = time.time()
 
@@ -33,7 +34,9 @@ class LoggingMiddleware(BaseHTTPMiddleware):
             logger.info(
                 f"Request completed: {request.method} {request.url.path} - "
                 f"ID: {request_id} - Status: {response.status_code} - "
-                f"Time: {process_time:.4f}s"
+                f"Time: {process_time:.4f}s - "
+                f"CORS Headers: {response.headers.get('access-control-allow-origin', 'none')}, "
+                f"Credentials: {response.headers.get('access-control-allow-credentials', 'none')}"
             )
             return response
         except Exception as e:
@@ -85,7 +88,7 @@ app = FastAPI(
     lifespan=life_span,
 )
 
-# CORS: Explicitly list allowed origins to avoid duplicate headers
+# CORS: Explicitly list allowed origins
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -96,7 +99,7 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
-    expose_headers=["Access-Control-Allow-Origin"],
+    expose_headers=["Access-Control-Allow-Origin", "Access-Control-Allow-Credentials"],
     max_age=600,
 )
 
