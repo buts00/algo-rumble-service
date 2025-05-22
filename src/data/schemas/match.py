@@ -3,6 +3,7 @@ from enum import Enum
 from typing import Optional
 from pydantic import UUID4, BaseModel
 from sqlalchemy import Column, DateTime
+from sqlalchemy.dialects.postgresql import UUID as SA_UUID
 from sqlalchemy import Enum as SQLEnum
 from sqlmodel import Field, SQLModel
 from src.data.schemas.base import BaseModel
@@ -31,10 +32,10 @@ class AcceptMatchRequest(SQLModel):
 class Match(BaseModel, table=True):
     __tablename__ = "matches"
 
-    player1_id: UUID4 = Field(sa_column=Column(UUID4, nullable=False))
-    player2_id: UUID4 = Field(sa_column=Column(UUID4, nullable=False))
-    winner_id: Optional[UUID4] = Field(sa_column=Column(UUID4, nullable=True))
-    problem_id: Optional[UUID4] = Field(sa_column=Column(UUID4, nullable=True))
+    player1_id: UUID4 = Field(sa_column=Column(SA_UUID(as_uuid=True), nullable=False))
+    player2_id: UUID4 = Field(sa_column=Column(SA_UUID(as_uuid=True), nullable=False))
+    winner_id: Optional[UUID4] = Field(sa_column=Column(SA_UUID(as_uuid=True), nullable=True))
+    problem_id: Optional[UUID4] = Field(sa_column=Column(SA_UUID(as_uuid=True), nullable=True))
     status: MatchStatus = Field(
         sa_column=Column(
             SQLEnum(MatchStatus), nullable=False, default=MatchStatus.CREATED
@@ -46,8 +47,6 @@ class Match(BaseModel, table=True):
         sa_column=Column(DateTime, default=datetime.utcnow, nullable=False)
     )
     end_time: Optional[datetime] = Field(sa_column=Column(DateTime, nullable=True))
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
 
 class MatchCreate(MatchBase):
     pass
@@ -70,9 +69,6 @@ class PlayerQueueEntry(BaseModel):
     timestamp: datetime = datetime.utcnow()
 
 class MatchQueueResult(BaseModel):
-    """
-    Represents the result of a match queue operation.
-    """
     success: bool
     message: str
     match_id: Optional[UUID4] = None

@@ -1,4 +1,6 @@
 from datetime import datetime
+from uuid import UUID
+
 from pydantic import UUID4
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -7,7 +9,7 @@ from src.data.schemas import Match, MatchStatus, Problem, User
 from src.errors import ResourceNotFoundException
 
 
-async def get_match_by_id(db: AsyncSession, match_id: UUID4 | str) -> Match:
+async def get_match_by_id(db: AsyncSession, match_id: UUID4 | UUID | str) -> Match:
     """Get a match by ID from the database."""
     match_id_str = str(match_id)  # Convert to string for consistency
     result = await db.execute(select(Match).where(Match.id == match_id_str))

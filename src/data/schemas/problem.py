@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import List, Optional
 from pydantic import UUID4, BaseModel
 from sqlalchemy import ARRAY, Column, String
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import UUID as SA_UUID
 from sqlmodel import Field, SQLModel
 from src.data.schemas.base import BaseModel
 
@@ -18,17 +18,13 @@ class Problem(BaseModel, table=True):
     rating: int = Field(nullable=False)
     topics: List[str] = Field(sa_column=Column(ARRAY(String), nullable=False))
     bucket_path: str = Field(sa_column=Column(String, nullable=True))
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
 
 class ProblemExample(BaseModel):
-    """Schema for a problem example"""
     input: str
     output: str
     explanation: Optional[str] = None
 
 class ProblemDetail(BaseModel):
-    """Schema for problem details"""
     name: str
     description: str
     time_limit: str
@@ -40,22 +36,18 @@ class ProblemDetail(BaseModel):
     note: Optional[str] = None
 
 class ProblemBase(BaseModel):
-    """Base schema for Problem with common attributes"""
     rating: int
     topics: List[str]
 
 class ProblemCreate(ProblemBase):
-    """Schema for creating a new problem"""
     problem: ProblemDetail
 
 class ProblemUpdate(BaseModel):
-    """Schema for updating an existing problem"""
     rating: Optional[int] = None
     topics: Optional[List[str]] = None
     problem: Optional[ProblemDetail] = None
 
 class ProblemResponse(ProblemBase):
-    """Schema for problem responses"""
     id: UUID4
     created_at: datetime
     updated_at: datetime
@@ -63,7 +55,6 @@ class ProblemResponse(ProblemBase):
     model_config = {"from_attributes": True}
 
 class ProblemSelectionParams(BaseModel):
-    """Parameters for selecting a problem for a match"""
     player1_rating: int
     player2_rating: int
     preferred_topics: Optional[List[str]] = None

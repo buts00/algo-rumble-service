@@ -2,6 +2,7 @@ from datetime import datetime
 from pydantic import UUID4
 from sqlmodel import Column, Field, SQLModel
 from sqlalchemy.dialects.postgresql import UUID as SA_UUID
+from sqlalchemy import DateTime
 import uuid
 
 class BaseModel(SQLModel, table=False):
@@ -18,16 +19,20 @@ class BaseModel(SQLModel, table=False):
     )
 
     created_at: datetime = Field(
+        default_factory=datetime.utcnow,
         sa_column=Column(
-            default_factory=datetime.utcnow,
+            DateTime,
+            default=datetime.utcnow,
             nullable=False,
         ),
         description="Timestamp when the entity was created.",
     )
 
     updated_at: datetime = Field(
+        default_factory=datetime.utcnow,
         sa_column=Column(
-            default_factory=datetime.utcnow,
+            DateTime,
+            default=datetime.utcnow,
             nullable=False,
         ),
         description="Timestamp when the entity was last updated.",
