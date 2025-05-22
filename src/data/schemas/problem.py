@@ -1,73 +1,61 @@
 from datetime import datetime
-from enum import Enum
-from typing import Optional
+from typing import List, Optional
 from pydantic import UUID4, BaseModel
-from sqlalchemy import Column, DateTime
+from sqlalchemy import ARRAY, Column, String
 from sqlalchemy.dialects.postgresql import UUID as SA_UUID
-from sqlalchemy import Enum as SQLEnum
 from sqlmodel import Field, SQLModel
 from src.data.schemas.base import BaseModel
 
-class MatchStatus(str, Enum):
-    CREATED = "created"
-    PENDING = "pending"
-    ACTIVE = "active"
-    COMPLETED = "completed"
-    DECLINED = "declined"
-    CANCELLED = "cancelled"
+class Problem(BaseModel, table=True):
+    """
+    Represents a coding problem in the system.
+    Problems are stored in a Digital Ocean bucket, and this model
+    contains metadata about the problems.
+    """
 
-class MatchBase(BaseModel):
-    player1_id: UUID4
-    player2_id: UUID4
-    problem_id: Optional[UUID4] = None
-    status: MatchStatus = MatchStatus.CREATED
+    __tablename__ = "problems"
 
-class FindMatchRequest(SQLModel):
-    user_id: str
+    rating: int = Field(nullable=False)
+    topics: List[str] = Field(sa_column=Column(ARRAY(String), nullable=False))
+    bucket_path: str = Field(sa_column=Column(String, nullable=True))
 
-class AcceptMatchRequest(SQLModel):
-    user_id: str
-    match_id: str
+class ProblemExample(BaseModel):
+    input: str
+    output: str
+    explanation: Optional[str] = None
 
-class Match(BaseModel, table=True):
-    __tablename__ = "matches"
+class ProblemDetail(BaseModel):
+    name: str
+    description: str
+    time_limit: str
+    memory_limit: str
+    input_description: str
+    output_description: str
+    examples: List[ProblemExample]
+    constraints: List[str]
+    note: Optional[str] = None
 
-    player1_id: UUID4 = Field(sa_column=Column(SA_UUID(as_uuid=True), nullable=False))
-    player2_id: UUID4 = Field(sa_column=Column(SA_UUID(as_uuid=True), nullable=False))
-    winner_id: Optional[UUID4] = Field(sa_column=Column(SA_UUID(as_uuid=True), nullable=True))
-    problem_id: Optional[UUID4] = Field(sa_column=Column(SA_UUID(as_uuid=True), nullable=True))
-    status: MatchStatus = Field(
-        sa_column=Column(
-            SQLEnum(MatchStatus), nullable=False, default=MatchStatus.CREATED
-        )
-    )
-    player1_accepted: bool = Field(default=False)
-    player2_accepted: bool = Field(default=False)
-    start_time: datetime = Field(
-        sa_column=Column(DateTime, default=datetime.utcnow, nullable=False)
-    )
-    end_time: Optional[datetime] = Field(sa_column=Column(DateTime, nullable=True))
+class ProblemBase(BaseModel):
+    rating: int
+    topics: List[str]
 
-class MatchCreate(MatchBase):
-    pass
+class ProblemCreate(ProblemBase):
+    problem: ProblemDetail
 
-class MatchResponse(MatchBase):
+class ProblemUpdate(BaseModel):
+    rating: Optional[int] = None
+    topics: Optional[List[str]] = None
+    problem: Optional[ProblemDetail] = None
+
+class ProblemResponse(ProblemBase):
     id: UUID4
-    winner_id: Optional[UUID4] = None
-    start_time: datetime
-    end_time: Optional[datetime] = None
+    created_at: datetime
+    updated_at: datetime
+    problem: Optional[ProblemDetail] = None
     model_config = {"from_attributes": True}
 
-class CapitulateRequest(BaseModel):
-    match_id: UUID4
-    loser_id: UUID4
-
-class PlayerQueueEntry(BaseModel):
-    user_id: UUID4
-    rating: int
-    timestamp: datetime = datetime.utcnow()
-
-class MatchQueueResult(BaseModel):
-    success: bool
-    message: str
-    match_id: Optional[UUID4] = None
+class ProblemSelectionParams(BaseModel):
+    player1_rating: int
+    player2_rating: int
+    preferred_topics: Optional[List[str]] = None
+    exclude_problem_ids: Optional[List[UUID4]] = None

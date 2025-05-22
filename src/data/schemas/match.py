@@ -32,8 +32,6 @@ class AcceptMatchRequest(SQLModel):
 class Match(BaseModel, table=True):
     __tablename__ = "matches"
 
-    id: None = Field(default=None)  # Override the inherited `id` field
-
     player1_id: UUID4 = Field(sa_column=Column(SA_UUID(as_uuid=True), nullable=False))
     player2_id: UUID4 = Field(sa_column=Column(SA_UUID(as_uuid=True), nullable=False))
     winner_id: Optional[UUID4] = Field(sa_column=Column(SA_UUID(as_uuid=True), nullable=True))
