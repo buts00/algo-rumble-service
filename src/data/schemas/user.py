@@ -1,21 +1,13 @@
 from sqlalchemy import Column, String, INTEGER
-from sqlmodel import Field
+from sqlmodel import Field, SQLModel
 from pydantic import UUID4
-
 from src.data.schemas.base import BaseModel
-
 
 class User(BaseModel, table=True):
     """Database model for a user."""
 
     __tablename__ = "users"
 
-    id: UUID4 = Field(
-        sa_column=Column(
-            UUID4, nullable=False, primary_key=True, default=UUID4, index=True
-        ),
-        description="Unique identifier for the user."
-    )
     username: str = Field(
         sa_column=Column(String(50), unique=True, nullable=False),
         description="Unique username for the user.",

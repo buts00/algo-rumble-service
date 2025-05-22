@@ -7,9 +7,10 @@ from src.data.schemas import Match, MatchStatus, Problem, User
 from src.errors import ResourceNotFoundException
 
 
-async def get_match_by_id(db: AsyncSession, match_id: UUID4) -> Match:
+async def get_match_by_id(db: AsyncSession, match_id: UUID4 | str) -> Match:
     """Get a match by ID from the database."""
-    result = await db.execute(select(Match).where(Match.id == match_id))
+    match_id_str = str(match_id)  # Convert to string for consistency
+    result = await db.execute(select(Match).where(Match.id == match_id_str))
     match = result.scalar_one_or_none()
     if not match:
         raise ResourceNotFoundException(detail="Match not found")
