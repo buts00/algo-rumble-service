@@ -56,7 +56,6 @@ class MatchResponse(MatchBase):
     winner_id: Optional[UUID4] = None
     start_time: datetime
     end_time: Optional[datetime] = None
-
     model_config = {"from_attributes": True}
 
 class CapitulateRequest(BaseModel):
