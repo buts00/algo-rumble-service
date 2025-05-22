@@ -1,11 +1,8 @@
-import json
+
 from datetime import datetime, timedelta
 from typing import List, Optional
 from uuid import UUID as UUID4, uuid4
 
-from pydantic import BaseModel
-from redis.asyncio import Redis
-from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.data.repositories import RedisClient, get_redis_client
@@ -95,19 +92,28 @@ class MatchService:
         rating_max = 5000  # Maximum rating
         for rating in range(rating_min, rating_max + 1, 50):  # Step by 50
             key = f"{self.QUEUE_KEY}:{rating}"
-            # Fetch all entries in the sorted set
-            entry_jsons = await self.redis_client.zrange(key, 0, -1)
-            if not entry_jsons:
+            # Fetch all entries with scores (timestamps)
+            try:
+                entries_with_scores = await self.redis_client.zrange(
+                    key, 0, -1, withscores=True
+                )
+            except Exception as e:
+                print(f"Error fetching queue entries: {e}")
                 continue
 
-            for entry_json in entry_jsons:
+            if not entries_with_scores:
+                continue
+
+            # Entries are returned as a list of (entry_json, score) tuples
+            for i in range(0, len(entries_with_scores), 2):
+                entry_json = entries_with_scores[i]
+                timestamp = entries_with_scores[i + 1] if i + 1 < len(entries_with_scores) else None
+
                 try:
                     entry = PlayerQueueEntry.model_validate_json(entry_json)
                     if str(entry.user_id) in matched_pairs:
                         continue
 
-                    # Get the score (timestamp) for this entry
-                    timestamp = await self.redis_client.zscore(key, entry_json)
                     if timestamp is None:
                         await self.redis_client.zrem(key, entry_json)
                         continue
@@ -119,10 +125,16 @@ class MatchService:
 
                     for offset in range(-rating_range, rating_range + 1, 50):
                         match_key = f"{self.QUEUE_KEY}:{rating + offset}"
-                        match_entry_jsons = await self.redis_client.zrange(
-                            match_key, 0, -1
-                        )
-                        for match_json in match_entry_jsons:
+                        try:
+                            match_entries = await self.redis_client.zrange(
+                                match_key, 0, -1, withscores=True
+                            )
+                        except Exception as e:
+                            print(f"Error fetching match queue entries: {e}")
+                            continue
+
+                        for j in range(0, len(match_entries), 2):
+                            match_json = match_entries[j]
                             try:
                                 match_entry = PlayerQueueEntry.model_validate_json(
                                     match_json
@@ -211,22 +223,20 @@ class MatchService:
         await db.commit()
         return {"message": "Match declined"}
 
-    async def get_active_match_service(self, db: AsyncSession) -> Optional[MatchResponse]:
+    async def get_active_match_service(self, db: AsyncSession, user_id: str) -> Optional[MatchResponse]:
         """
         Get the active or pending match for the user.
         """
-        match = await get_active_or_pending_match(db, None)  # Needs user_id from context
-        if not match:
-            return None
-        return MatchResponse.from_orm(match)
+        match = await get_active_or_pending_match(db, user_id)
+        return MatchResponse.from_orm(match) if match else None
 
     async def get_match_history_service(
-        self, limit: int, offset: int, db: AsyncSession
+        self, user_id: str, limit: int, offset: int, db: AsyncSession
     ) -> List[MatchResponse]:
         """
         Get match history for the user with pagination.
         """
-        matches = await get_match_history(db, None, limit, offset)  # Needs user_id
+        matches = await get_match_history(db, user_id, limit, offset)
         return [MatchResponse.from_orm(match) for match in matches]
 
     async def get_match_details_service(self, db: AsyncSession, match_id: str) -> Match:
