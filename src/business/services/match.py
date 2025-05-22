@@ -175,15 +175,21 @@ class MatchService:
                                     "opponent_id": str(new_match.player2_id),
                                     "timeout": acceptance_timeout,
                                 }
-                                await manager.send_personal_message(
-                                    notification, str(new_match.player1_id)
-                                )
-                                logger.info(f"Sent notification to player1: {new_match.player1_id}")
+                                try:
+                                    await manager.send_json(notification, str(new_match.player1_id))
+                                    logger.info(f"Sent notification to player1: {new_match.player1_id}")
+                                except AttributeError as e:
+                                    logger.error(f"WebSocket send_json failed for player1: {e}")
+                                    logger.info(f"Available manager methods: {dir(manager)}")
+                                    raise
                                 notification["opponent_id"] = str(new_match.player1_id)
-                                await manager.send_personal_message(
-                                    notification, str(new_match.player2_id)
-                                )
-                                logger.info(f"Sent notification to player2: {new_match.player2_id}")
+                                try:
+                                    await manager.send_json(notification, str(new_match.player2_id))
+                                    logger.info(f"Sent notification to player2: {new_match.player2_id}")
+                                except AttributeError as e:
+                                    logger.error(f"WebSocket send_json failed for player2: {e}")
+                                    logger.info(f"Available manager methods: {dir(manager)}")
+                                    raise
                                 break
                             except Exception as e:
                                 logger.error(f"Error processing match entry: {e}")
