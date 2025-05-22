@@ -34,7 +34,8 @@ async def find_match(
             f"Unauthorized match request: {request_data.user_id} != {current_user.id}"
         )
         raise AuthorizationException("Can only find matches for yourself")
-    return await MatchService.find_match_service(
+    match_service = MatchService()  # Create instance of MatchService
+    return await match_service.find_match_service(
         request_data.user_id, current_user, db, background_tasks
     )
 
