@@ -164,6 +164,7 @@ async def update_tokens(
     session: AsyncSession = Depends(get_session),
 ):
     user_id = token_details["user"]["id"]
+    username = token_details["user"].get("username", "unknown")
     auth_logger.info(f"Token refresh attempt for user ID: {user_id}")
     user = await user_service.get_user_by_id(user_id, session)
     if not user:
