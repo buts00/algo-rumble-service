@@ -21,9 +21,11 @@ from src.errors import register_exception_handlers
 from src.presentation.middleware.rate_limit import RateLimitMiddleware
 
 
+import uuid
+
 class LoggingMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
-        request_id = str(UUID4())
+        request_id = str(uuid.uuid4())  # Use uuid.uuid4() instead of UUID4()
         request.state.request_id = request_id
 
         logger.info(
