@@ -1,4 +1,4 @@
-
+import json
 from datetime import datetime, timedelta
 from typing import List, Optional
 from uuid import UUID as UUID4, uuid4
@@ -92,49 +92,33 @@ class MatchService:
         rating_max = 5000  # Maximum rating
         for rating in range(rating_min, rating_max + 1, 50):  # Step by 50
             key = f"{self.QUEUE_KEY}:{rating}"
-            # Fetch all entries with scores (timestamps)
+            # Fetch all entries without scores
             try:
-                entries_with_scores = await self.redis_client.zrange(
-                    key, 0, -1, withscores=True
-                )
+                entries = await self.redis_client.zrange(key, 0, -1)
             except Exception as e:
                 print(f"Error fetching queue entries: {e}")
                 continue
 
-            if not entries_with_scores:
+            if not entries:
                 continue
 
-            # Entries are returned as a list of (entry_json, score) tuples
-            for i in range(0, len(entries_with_scores), 2):
-                entry_json = entries_with_scores[i]
-                timestamp = entries_with_scores[i + 1] if i + 1 < len(entries_with_scores) else None
-
+            for entry_json in entries:
                 try:
                     entry = PlayerQueueEntry.model_validate_json(entry_json)
                     if str(entry.user_id) in matched_pairs:
-                        continue
-
-                    if timestamp is None:
-                        await self.redis_client.zrem(key, entry_json)
-                        continue
-
-                    entry_time = datetime.fromtimestamp(timestamp)
-                    if datetime.now() - entry_time > timedelta(minutes=5):
-                        await self.redis_client.zrem(key, entry_json)
                         continue
 
                     for offset in range(-rating_range, rating_range + 1, 50):
                         match_key = f"{self.QUEUE_KEY}:{rating + offset}"
                         try:
                             match_entries = await self.redis_client.zrange(
-                                match_key, 0, -1, withscores=True
+                                match_key, 0, -1
                             )
                         except Exception as e:
                             print(f"Error fetching match queue entries: {e}")
                             continue
 
-                        for j in range(0, len(match_entries), 2):
-                            match_json = match_entries[j]
+                        for match_json in match_entries:
                             try:
                                 match_entry = PlayerQueueEntry.model_validate_json(
                                     match_json
