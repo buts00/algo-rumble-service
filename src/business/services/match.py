@@ -8,7 +8,7 @@ from redis.asyncio import Redis
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.data.repositories.redis_dependency import RedisClient, get_redis_client
+from src.data.repositories import RedisClient, get_redis_client
 from src.data.schemas import Match, User
 from src.data.repositories.match_repository import (
     get_active_or_pending_match,
@@ -16,7 +16,7 @@ from src.data.repositories.match_repository import (
     get_match_history,
 )
 from src.data.repositories.user_repository import get_user_by_id
-from src.data.schemas import PlayerQueueEntry, MatchResponse
+from src.data.schemas.match import PlayerQueueEntry, MatchResponse
 from src.data.schemas import UserBaseResponse
 from src.errors import (
     AuthorizationException,
@@ -88,40 +88,41 @@ class MatchService:
         """
         Process the matchmaking queue to pair players.
         """
-        # Define rating range for matching (e.g., ±100 rating points)
-        rating_range = 100
+        rating_range = 100  # Match players within ±100 rating points
         matched_pairs = set()  # Track matched user IDs to avoid duplicates
 
-        # Iterate through possible rating keys in Redis
-        rating_min = 0  # Assume ratings start at 0
-        rating_max = 5000  # Assume a reasonable max rating
-        for rating in range(rating_min, rating_max + 1, 50):  # Step by 50 for efficiency
+        rating_min = 0  # Minimum rating
+        rating_max = 5000  # Maximum rating
+        for rating in range(rating_min, rating_max + 1, 50):  # Step by 50
             key = f"{self.QUEUE_KEY}:{rating}"
-            # Get all entries for this rating
-            entries = await self.redis_client.zrange(key, 0, -1, withscores=True)
-            if not entries:
+            # Fetch all entries in the sorted set
+            entry_jsons = await self.redis_client.zrange(key, 0, -1)
+            if not entry_jsons:
                 continue
 
-            # Process entries as MatchQueueEntry objects
-            for entry_json, timestamp in entries:
+            for entry_json in entry_jsons:
                 try:
                     entry = PlayerQueueEntry.model_validate_json(entry_json)
                     if str(entry.user_id) in matched_pairs:
-                        continue  # Skip already matched players
+                        continue
 
-                    # Check if entry is too old (e.g., > 5 minutes)
+                    # Get the score (timestamp) for this entry
+                    timestamp = await self.redis_client.zscore(key, entry_json)
+                    if timestamp is None:
+                        await self.redis_client.zrem(key, entry_json)
+                        continue
+
                     entry_time = datetime.fromtimestamp(timestamp)
                     if datetime.now() - entry_time > timedelta(minutes=5):
                         await self.redis_client.zrem(key, entry_json)
                         continue
 
-                    # Look for a match in nearby rating keys
                     for offset in range(-rating_range, rating_range + 1, 50):
                         match_key = f"{self.QUEUE_KEY}:{rating + offset}"
-                        match_entries = await self.redis_client.zrange(
-                            match_key, 0, -1, withscores=True
+                        match_entry_jsons = await self.redis_client.zrange(
+                            match_key, 0, -1
                         )
-                        for match_json, match_timestamp in match_entries:
+                        for match_json in match_entry_jsons:
                             try:
                                 match_entry = PlayerQueueEntry.model_validate_json(
                                     match_json
@@ -132,7 +133,6 @@ class MatchService:
                                 ):
                                     continue
 
-                                # Verify both users don't have active matches
                                 if await self.has_active_match(
                                     db, str(entry.user_id)
                                 ) or await self.has_active_match(
@@ -140,7 +140,6 @@ class MatchService:
                                 ):
                                     continue
 
-                                # Create a new match
                                 new_match = Match(
                                     id=uuid4(),
                                     player1_id=entry.user_id,
@@ -153,15 +152,12 @@ class MatchService:
                                 db.add(new_match)
                                 await db.commit()
 
-                                # Remove both players from the queue
                                 await self.redis_client.zrem(key, entry_json)
                                 await self.redis_client.zrem(match_key, match_json)
 
-                                # Add to matched pairs
                                 matched_pairs.add(str(entry.user_id))
                                 matched_pairs.add(str(match_entry.user_id))
 
-                                # Notify both players via WebSocket
                                 notification = {
                                     "match_id": str(new_match.id),
                                     "status": "pending",
@@ -175,17 +171,13 @@ class MatchService:
                                 await manager.send_personal_message(
                                     notification, str(new_match.player2_id)
                                 )
-
-                                # Break to avoid matching this player again
                                 break
                             except Exception as e:
-                                # Log error and continue to next entry
                                 print(f"Error processing match entry: {e}")
                                 continue
                         if str(entry.user_id) in matched_pairs:
-                            break  # Player was matched
+                            break
                 except Exception as e:
-                    # Log error and continue to next entry
                     print(f"Error processing queue entry: {e}")
                     continue
 
@@ -200,7 +192,7 @@ class MatchService:
             raise AuthorizationException("Not a participant in this match")
         if match.status != "pending":
             raise BadRequestException("Match is not in pending state")
-        match.status = Match.ACTIVE
+        match.status = "active"
         await db.commit()
         return {"message": "Match accepted"}
 
@@ -256,7 +248,7 @@ class MatchService:
         if match.status != "active":
             raise BadRequestException("Match is not active")
         match.winner_id = UUID4(winner_id)
-        match.status = Match.COMPLETED
+        match.status = "completed"
         await db.commit()
         return {"message": "Match completed"}
 
@@ -271,5 +263,21 @@ class MatchService:
         """
         Remove the user from the matchmaking queue.
         """
-        # Placeholder: Implement logic to remove user from Redis queue
-        pass
+        user_uuid = UUID4(user_id)
+        # Since we don't know the user's rating, check all possible rating keys
+        rating_min = 0
+        rating_max = 5000
+        removed = False
+        for rating in range(rating_min, rating_max + 1, 50):
+            key = f"{self.QUEUE_KEY}:{rating}"
+            entries = await self.redis_client.zrange(key, 0, -1)
+            for entry_json in entries:
+                try:
+                    entry = PlayerQueueEntry.model_validate_json(entry_json)
+                    if entry.user_id == user_uuid:
+                        await self.redis_client.zrem(key, entry_json)
+                        removed = True
+                except Exception as e:
+                    print(f"Error processing queue entry for removal: {e}")
+                    continue
+        return {"message": "User removed from queue" if removed else "User not found in queue"}
