@@ -179,7 +179,7 @@ async def cancel_find_match(
     return await MatchService.cancel_find_match_service(str(current_user.id))
 
 
-@router.websocket("/match/ws/{user_id}", name="Match notifications")
+@router.websocket("/ws/{user_id}", name="Match notifications")
 async def websocket_endpoint(
     websocket: WebSocket,
     user_id: UUID4,

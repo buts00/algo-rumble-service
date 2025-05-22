@@ -24,7 +24,23 @@ class TokenFromCookie:
 
         return token_data
 
+class TokenFromWebSocket(TokenFromCookie):
+    async def __call__(self, websocket: WebSocket) -> dict:
+        token = websocket.cookies.get(self.cookie_name)
+        if not token:
+            await websocket.close(code=1008, reason=f"{self.cookie_name} not found")
+            raise WebSocketDisconnect(code=1008)
+
+        from src.business.services.auth_util import decode_token
+        token_data = decode_token(token)
+        if not token_data:
+            await websocket.close(code=1008, reason="Invalid or expired token")
+            raise WebSocketDisconnect(code=1008)
+
+        return token_data
+
 AccessTokenFromCookie = TokenFromCookie
+AccessTokenFromWebSocket = TokenFromWebSocket
 
 class RefreshTokenFromCookie(TokenFromCookie):
     def __init__(self):

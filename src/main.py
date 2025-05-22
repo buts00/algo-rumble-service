@@ -25,22 +25,21 @@ import uuid
 
 class LoggingMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
-        request_id = str(uuid.uuid4())  # Use uuid.uuid4() instead of UUID4()
+        request_id = str(uuid.uuid4())
         request.state.request_id = request_id
-
+        origin = request.headers.get("origin")
         logger.info(
             f"Request started: {request.method} {request.url.path} - "
-            f"ID: {request_id} - Client: {request.client.host}"
+            f"ID: {request_id} - Client: {request.client.host} - Origin: {origin}"
         )
         start_time = time.time()
-
         try:
             response = await call_next(request)
             process_time = time.time() - start_time
             logger.info(
                 f"Request completed: {request.method} {request.url.path} - "
                 f"ID: {request_id} - Status: {response.status_code} - "
-                f"Time: {process_time:.4f}s"
+                f"Time: {process_time:.4f}s - Response headers: {response.headers}"
             )
             return response
         except Exception as e:
@@ -83,8 +82,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "https://algo-rubmle.vercel.app",
-        "https://*.vercel.app",  # Allow all Vercel subdomains (optional)
-        "http://localhost:3000",  # For local development
+        "http://localhost:3000",
     ],
     allow_credentials=True,
     allow_methods=["*"],
