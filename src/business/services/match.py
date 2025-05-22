@@ -25,16 +25,14 @@ logger = logging.getLogger("app.match")
 
 class MatchService:
     QUEUE_KEY = "matchmaking_queue"
-    match_acceptance_timeout = 30  # Seconds for match acceptance
-    match_draw_timeout = 300  # Seconds for match draw timeout
+    match_acceptance_timeout = 30  # Секунди для прийняття матчу
+    match_draw_timeout = 300  # Секунди для тайм-ауту нічиєї
 
     def __init__(self, redis_client: RedisClient = None):
         self.redis_client = redis_client or get_redis_client()
 
     async def add_player_to_queue(self, user_id: UUID4, rating: int) -> bool:
-        """
-        Add a player to the matchmaking queue with their rating.
-        """
+        """Додає гравця до черги підбору матчів із його рейтингом."""
         entry = PlayerQueueEntry(
             user_id=user_id, rating=rating, timestamp=datetime.now()
         )
@@ -42,13 +40,11 @@ class MatchService:
         await self.redis_client.zadd(
             key, {entry.model_dump_json(): entry.timestamp.timestamp()}
         )
-        logger.info(f"Added player {user_id} to queue at rating {rating}")
+        logger.info(f"Додано гравця {user_id} до черги з рейтингом {rating}")
         return True
 
     async def has_active_match(self, db: AsyncSession, user_id: str) -> bool:
-        """
-        Check if the user has an active or pending match.
-        """
+        """Перевіряє, чи має користувач активний або очікуючий матч."""
         match = await get_active_or_pending_match(db, user_id)
         return match is not None
 
@@ -59,50 +55,45 @@ class MatchService:
         db: AsyncSession,
         background_tasks,
     ):
-        """
-        Find a match for a user.
-        """
+        """Знаходить матч для користувача."""
         user_uuid = UUID4(user_id)
         if user_uuid != current_user.id:
-            logger.warning(f"Unauthorized match request: {user_id} != {current_user.id}")
-            raise AuthorizationException("You can only find matches for yourself")
+            logger.warning(f"Несанкціонований запит на матч: {user_id} != {current_user.id}")
+            raise AuthorizationException("Ви можете шукати матчі лише для себе")
         user = await get_user_by_id(db, user_uuid)
         if not user:
-            raise ResourceNotFoundException("User not found")
+            raise ResourceNotFoundException("Користувача не знайдено")
         if await self.has_active_match(db, user_id):
-            raise BadRequestException("User already has an active match")
+            raise BadRequestException("Користувач уже має активний матч")
         added = await self.add_player_to_queue(user.id, user.rating)
         if not added:
-            raise BadRequestException("Player already in queue")
-        logger.info(f"Scheduling process_match_queue for user {user_id}")
+            raise BadRequestException("Гравець уже в черзі")
+        logger.info(f"Заплановано process_match_queue для користувача {user_id}")
         background_tasks.add_task(
             self.process_match_queue,
             db,
             self.match_acceptance_timeout,
             self.match_draw_timeout,
         )
-        return {"message": "Player added to queue"}
+        return {"message": "Гравця додано до черги"}
 
     async def process_match_queue(
         self, db: AsyncSession, acceptance_timeout: int, draw_timeout: int
     ):
-        """
-        Process the matchmaking queue to pair players.
-        """
-        logger.info("Starting process_match_queue")
-        rating_range = 200  # Match players within ±200 rating points
-        matched_pairs = set()  # Track matched user IDs to avoid duplicates
+        """Обробляє чергу підбору матчів для створення пар."""
+        logger.info("Початок process_match_queue")
+        rating_range = 200  # Підбір гравців у межах ±200 рейтингових очок
+        matched_pairs = set()  # Відстеження парного підбору для уникнення дублювання
 
-        rating_min = 0  # Minimum rating
-        rating_max = 5000  # Maximum rating
-        for rating in range(rating_min, rating_max + 1, 50):  # Step by 50
+        rating_min = 0  # Мінімальний рейтинг
+        rating_max = 5000  # Максимальний рейтинг
+        for rating in range(rating_min, rating_max + 1, 50):  # Крок 50
             key = f"{self.QUEUE_KEY}:{rating}"
-            # Fetch all entries
             try:
                 entries = await self.redis_client.zrange(key, 0, -1)
-                logger.info(f"Fetched {len(entries)} entries for rating {rating}: {entries}")
+                logger.info(f"Отримано {len(entries)} записів для рейтингу {rating}: {entries}")
             except Exception as e:
-                logger.error(f"Error fetching queue entries for rating {rating}: {e}")
+                logger.error(f"Помилка при отриманні записів черги для рейтингу {rating}: {e}")
                 continue
 
             if not entries:
@@ -111,44 +102,36 @@ class MatchService:
             for entry_json in entries:
                 try:
                     entry = PlayerQueueEntry.model_validate_json(entry_json)
-                    logger.info(f"Processing entry for user {entry.user_id}, rating {entry.rating}")
+                    logger.info(f"Обробка запису для користувача {entry.user_id}, рейтинг {entry.rating}")
                     if str(entry.user_id) in matched_pairs:
-                        logger.info(f"Skipping already matched user {entry.user_id}")
+                        logger.info(f"Пропуск уже підібраного користувача {entry.user_id}")
                         continue
 
                     for offset in range(-rating_range, rating_range + 1, 50):
                         match_key = f"{self.QUEUE_KEY}:{rating + offset}"
                         try:
-                            match_entries = await self.redis_client.zrange(
-                                match_key, 0, -1
-                            )
-                            logger.info(f"Fetched {len(match_entries)} match entries for rating {rating + offset}")
+                            match_entries = await self.redis_client.zrange(match_key, 0, -1)
+                            logger.info(f"Отримано {len(match_entries)} записів для рейтингу {rating + offset}")
                         except Exception as e:
-                            logger.error(f"Error fetching match queue entries for rating {rating + offset}: {e}")
+                            logger.error(f"Помилка при отриманні записів черги для рейтингу {rating + offset}: {e}")
                             continue
 
                         for match_json in match_entries:
                             try:
-                                match_entry = PlayerQueueEntry.model_validate_json(
-                                    match_json
-                                )
-                                logger.info(f"Checking potential match: user {match_entry.user_id}, rating {match_entry.rating}")
+                                match_entry = PlayerQueueEntry.model_validate_json(match_json)
+                                logger.info(f"Перевірка потенційного матчу: користувач {match_entry.user_id}, рейтинг {match_entry.rating}")
                                 if (
                                     str(match_entry.user_id) in matched_pairs
                                     or match_entry.user_id == entry.user_id
                                 ):
-                                    logger.info(f"Skipping invalid match: user {match_entry.user_id}")
+                                    logger.info(f"Пропуск невалідного матчу: користувач {match_entry.user_id}")
                                     continue
 
-                                if await self.has_active_match(
-                                    db, str(entry.user_id)
-                                ) or await self.has_active_match(
-                                    db, str(match_entry.user_id)
-                                ):
-                                    logger.info(f"Skipping users with active matches: {entry.user_id}, {match_entry.user_id}")
+                                if await self.has_active_match(db, str(entry.user_id)) or await self.has_active_match(db, str(match_entry.user_id)):
+                                    logger.info(f"Пропуск користувачів із активними матчами: {entry.user_id}, {match_entry.user_id}")
                                     continue
 
-                                logger.info(f"Creating match between {entry.user_id} and {match_entry.user_id}")
+                                logger.info(f"Створення матчу між {entry.user_id} і {match_entry.user_id}")
                                 new_match = Match(
                                     id=uuid4(),
                                     player1_id=entry.user_id,
@@ -160,11 +143,11 @@ class MatchService:
                                 )
                                 db.add(new_match)
                                 await db.commit()
-                                logger.info(f"Match created: ID {new_match.id}")
+                                logger.info(f"Матч створено: ID {new_match.id}")
 
                                 await self.redis_client.zrem(key, entry_json)
                                 await self.redis_client.zrem(match_key, match_json)
-                                logger.info(f"Removed matched entries from Redis")
+                                logger.info(f"Видалено підібрані записи з Redis")
 
                                 matched_pairs.add(str(entry.user_id))
                                 matched_pairs.add(str(match_entry.user_id))
@@ -176,113 +159,98 @@ class MatchService:
                                     "timeout": acceptance_timeout,
                                 }
                                 try:
-                                    await manager.send_json(notification, str(new_match.player1_id))
-                                    logger.info(f"Sent notification to player1: {new_match.player1_id}")
+                                    # ВИПРАВЛЕНО: Замінено send_json на send_match_notification
+                                    await manager.send_match_notification(str(new_match.player1_id), notification)
+                                    logger.info(f"Надіслано повідомлення гравцеві 1: {new_match.player1_id}")
                                 except AttributeError as e:
-                                    logger.error(f"WebSocket send_json failed for player1: {e}")
-                                    logger.info(f"Available manager methods: {dir(manager)}")
+                                    logger.error(f"Помилка WebSocket send_match_notification для гравця 1: {e}")
+                                    logger.info(f"Доступні методи менеджера: {dir(manager)}")
                                     raise
                                 notification["opponent_id"] = str(new_match.player1_id)
                                 try:
-                                    await manager.send_json(notification, str(new_match.player2_id))
-                                    logger.info(f"Sent notification to player2: {new_match.player2_id}")
+                                    # ВИПРАВЛЕНО: Замінено send_json на send_match_notification
+                                    await manager.send_match_notification(str(new_match.player2_id), notification)
+                                    logger.info(f"Надіслано повідомлення гравцеві 2: {new_match.player2_id}")
                                 except AttributeError as e:
-                                    logger.error(f"WebSocket send_json failed for player2: {e}")
-                                    logger.info(f"Available manager methods: {dir(manager)}")
+                                    logger.error(f"Помилка WebSocket send_match_notification для гравця 2: {e}")
+                                    logger.info(f"Доступні методи менеджера: {dir(manager)}")
                                     raise
                                 break
                             except Exception as e:
-                                logger.error(f"Error processing match entry: {e}")
+                                logger.error(f"Помилка обробки запису матчу: {e}")
                                 continue
                         if str(entry.user_id) in matched_pairs:
                             break
                 except Exception as e:
-                    logger.error(f"Error processing queue entry: {e}")
+                    logger.error(f"Помилка обробки запису черги: {e}")
                     continue
-        logger.info("Completed process_match_queue")
+        logger.info("Завершено process_match_queue")
 
     async def accept_match_service(self, match_id: str, user_id: str, db: AsyncSession):
-        """
-        Accept a pending match.
-        """
+        """Приймає очікуючий матч."""
         match = await get_match_by_id(db, match_id)
         if not match:
-            raise ResourceNotFoundException("Match not found")
+            raise ResourceNotFoundException("Матч не знайдено")
         if str(user_id) not in [str(match.player1_id), str(match.player2_id)]:
-            raise AuthorizationException("Not a participant in this match")
+            raise AuthorizationException("Ви не є учасником цього матчу")
         if match.status != "pending":
-            raise BadRequestException("Match is not in pending state")
+            raise BadRequestException("Матч не в стані очікування")
         match.status = "active"
         await db.commit()
-        return {"message": "Match accepted"}
+        return {"message": "Матч прийнято"}
 
     async def decline_match_service(self, match_id: str, user_id: str, db: AsyncSession):
-        """
-        Decline a pending match.
-        """
+        """Відхиляє очікуючий матч."""
         match = await get_match_by_id(db, match_id)
         if not match:
-            raise ResourceNotFoundException("Match not found")
+            raise ResourceNotFoundException("Матч не знайдено")
         if str(user_id) not in [str(match.player1_id), str(match.player2_id)]:
-            raise AuthorizationException("Not a participant in this match")
+            raise AuthorizationException("Ви не є учасником цього матчу")
         if match.status != "pending":
-            raise BadRequestException("Match is not in pending state")
+            raise BadRequestException("Матч не в стані очікування")
         await db.delete(match)
         await db.commit()
-        return {"message": "Match declined"}
+        return {"message": "Матч відхилено"}
 
     async def get_active_match_service(self, db: AsyncSession, user_id: str) -> Optional[MatchResponse]:
-        """
-        Get the active or pending match for the user.
-        """
+        """Отримує активний або очікуючий матч для користувача."""
         match = await get_active_or_pending_match(db, user_id)
         return MatchResponse.from_orm(match) if match else None
 
     async def get_match_history_service(
         self, user_id: str, limit: int, offset: int, db: AsyncSession
     ) -> List[MatchResponse]:
-        """
-        Get match history for the user with pagination.
-        """
+        """Отримує історію матчів користувача з пагінацією."""
         matches = await get_match_history(db, user_id, limit, offset)
         return [MatchResponse.from_orm(match) for match in matches]
 
     async def get_match_details_service(self, db: AsyncSession, match_id: str) -> Match:
-        """
-        Get details of a specific match.
-        """
+        """Отримує деталі конкретного матчу."""
         match = await get_match_by_id(db, match_id)
         if not match:
-            raise ResourceNotFoundException("Match not found")
+            raise ResourceNotFoundException("Матч не знайдено")
         return match
 
     async def complete_match_service(self, winner_id: str, db: AsyncSession, match_id: str):
-        """
-        Mark a match as completed with the specified winner.
-        """
+        """Позначає матч як завершений із вказаним переможцем."""
         match = await get_match_by_id(db, match_id)
         if not match:
-            raise ResourceNotFoundException("Match not found")
+            raise ResourceNotFoundException("Матч не знайдено")
         if match.status != "active":
-            raise BadRequestException("Match is not active")
+            raise BadRequestException("Матч не є активним")
         match.winner_id = UUID4(winner_id)
         match.status = "completed"
         await db.commit()
-        return {"message": "Match completed"}
+        return {"message": "Матч завершено"}
 
     async def capitulate_match_logic(self, match_id: UUID4, loser_id: UUID4):
-        """
-        Handle match capitulation, declaring the opponent as the winner.
-        """
-        # Placeholder: Implement logic to update match with loser and winner
+        """Обробляє капітуляцію матчу, оголошуючи опонента переможцем."""
+        # Placeholder: Реалізуйте логіку оновлення матчу з переможцем і переможеним
         pass
 
     async def cancel_find_match_service(self, user_id: str):
-        """
-        Remove the user from the matchmaking queue.
-        """
+        """Видаляє користувача з черги підбору матчів."""
         user_uuid = UUID4(user_id)
-        # Since we don't know the user's rating, check all possible rating keys
         rating_min = 0
         rating_max = 5000
         removed = False
@@ -295,8 +263,8 @@ class MatchService:
                     if entry.user_id == user_uuid:
                         await self.redis_client.zrem(key, entry_json)
                         removed = True
-                        logger.info(f"Removed user {user_id} from queue at rating {rating}")
+                        logger.info(f"Видалено користувача {user_id} з черги на рейтингу {rating}")
                 except Exception as e:
-                    logger.error(f"Error processing queue entry for removal: {e}")
+                    logger.error(f"Помилка обробки запису черги для видалення: {e}")
                     continue
-        return {"message": "User removed from queue" if removed else "User not found in queue"}
+        return {"message": "Користувача видалено з черги" if removed else "Користувача не знайдено в черзі"}

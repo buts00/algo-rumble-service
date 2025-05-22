@@ -16,11 +16,10 @@ from src.presentation.websocket import manager
 router = APIRouter(prefix="/match", tags=["match"])
 match_logger = logger.getChild("match")
 
-
 @router.post(
     "/find",
-    summary="Find a match",
-    description="Adds the user to the matchmaking queue and processes the queue in the background.",
+    summary="Знайти матч",
+    description="Додає користувача до черги підбору матчів і обробляє чергу у фоновому режимі.",
 )
 async def find_match(
     request_data: FindMatchRequest,
@@ -28,72 +27,71 @@ async def find_match(
     db: AsyncSession = Depends(get_session),
     current_user: UserBaseResponse = Depends(get_current_user),
 ):
-    match_logger.info(f"Match find request for user ID: {request_data.user_id}")
+    match_logger.info(f"Запит на пошук матчу для користувача ID: {request_data.user_id}")
     if str(request_data.user_id) != str(current_user.id):
         match_logger.warning(
-            f"Unauthorized match request: {request_data.user_id} != {current_user.id}"
+            f"Несанкціонований запит на матч: {request_data.user_id} != {current_user.id}"
         )
-        raise AuthorizationException("Can only find matches for yourself")
-    match_service = MatchService()  # Create instance of MatchService
+        raise AuthorizationException("Можна шукати матчі лише для себе")
+    match_service = MatchService()  # Створення екземпляра MatchService
     return await match_service.find_match_service(
         request_data.user_id, current_user, db, background_tasks
     )
 
-
 @router.post(
     "/accept",
-    summary="Accept a match",
-    description="Accepts a pending match for the authenticated user.",
+    summary="Прийняти матч",
+    description="Приймає очікуючий матч для автентифікованого користувача.",
 )
 async def accept_match(
     request_data: AcceptMatchRequest,
     db: AsyncSession = Depends(get_session),
     current_user: UserBaseResponse = Depends(get_current_user),
 ):
-    match_logger.info(f"Match accept request for match ID: {request_data.match_id}")
+    match_logger.info(f"Запит на прийняття матчу для ID: {request_data.match_id}")
     if str(request_data.user_id) != str(current_user.id):
         match_logger.warning(
-            f"Unauthorized accept request: {request_data.user_id} != {current_user.id}"
+            f"Несанкціонований запит на прийняття: {request_data.user_id} != {current_user.id}"
         )
-        raise AuthorizationException("Can only accept matches for yourself")
-    return await MatchService.accept_match_service(
+        raise AuthorizationException("Можна приймати матчі лише для себе")
+    match_service = MatchService()  # Створення екземпляра MatchService
+    return await match_service.accept_match_service(
         str(request_data.match_id), str(current_user.id), db
     )
 
-
 @router.post(
     "/decline/{match_id}",
-    summary="Decline a match",
-    description="Declines a pending match for the authenticated user.",
+    summary="Відхилити матч",
+    description="Відхиляє очікуючий матч для автентифікованого користувача.",
 )
 async def decline_match(
     match_id: UUID4,
     db: AsyncSession = Depends(get_session),
     current_user: UserBaseResponse = Depends(get_current_user),
 ):
-    match_logger.info(f"Match decline request for match ID: {match_id}")
-    return await MatchService.decline_match_service(
+    match_logger.info(f"Запит на відхилення матчу для ID: {match_id}")
+    match_service = MatchService()  # Створення екземпляра MatchService
+    return await match_service.decline_match_service(
         str(match_id), str(current_user.id), db
     )
 
-
 @router.get(
     "/active",
-    summary="Get active match",
-    description="Returns the active or pending match for the authenticated user.",
+    summary="Отримати активний матч",
+    description="Повертає активний або очікуючий матч для автентифікованого користувача.",
 )
 async def get_active_match(
     db: AsyncSession = Depends(get_session),
     current_user: UserBaseResponse = Depends(get_current_user),
 ):
-    match_logger.info(f"Active match request for user ID: {current_user.id}")
-    return await MatchService.get_active_match_service(db)
-
+    match_logger.info(f"Запит на активний матч для користувача ID: {current_user.id}")
+    match_service = MatchService()  # Створення екземпляра MatchService
+    return await match_service.get_active_match_service(db, str(current_user.id))
 
 @router.get(
     "/history",
-    summary="Get match history",
-    description="Returns the match history for the authenticated user with pagination.",
+    summary="Отримати історію матчів",
+    description="Повертає історію матчів автентифікованого користувача з пагінацією.",
 )
 async def get_match_history(
     limit: int = 10,
@@ -101,36 +99,36 @@ async def get_match_history(
     db: AsyncSession = Depends(get_session),
     current_user: UserBaseResponse = Depends(get_current_user),
 ):
-    match_logger.info(f"Match history request for user ID: {current_user.id}")
-    return await MatchService.get_match_history_service(
-        limit, offset, db
+    match_logger.info(f"Запит на історію матчів для користувача ID: {current_user.id}")
+    match_service = MatchService()  # Створення екземпляра MatchService
+    return await match_service.get_match_history_service(
+        str(current_user.id), limit, offset, db
     )
-
 
 @router.get(
     "/details/{match_id}",
-    summary="Get match details",
-    description="Returns details of a specific match, if the user is a participant.",
+    summary="Отримати деталі матчу",
+    description="Повертає деталі конкретного матчу, якщо користувач є учасником.",
 )
 async def get_match_details(
     match_id: UUID4,
     db: AsyncSession = Depends(get_session),
     current_user: UserBaseResponse = Depends(get_current_user),
 ):
-    match_logger.info(f"Match details request for match ID: {match_id}")
-    match = await MatchService.get_match_details_service(db)
+    match_logger.info(f"Запит на деталі матчу для ID: {match_id}")
+    match_service = MatchService()  # Створення екземпляра MatchService
+    match = await match_service.get_match_details_service(db, str(match_id))
     if str(current_user.id) not in [str(match.player1_id), str(match.player2_id)]:
         match_logger.warning(
-            f"Unauthorized details request: {current_user.id} not in match {match_id}"
+            f"Несанкціонований запит на деталі: {current_user.id} не в матчі {match_id}"
         )
-        raise AuthorizationException("Not a participant in this match")
+        raise AuthorizationException("Ви не є учасником цього матчу")
     return match
-
 
 @router.post(
     "/complete/{match_id}",
-    summary="Complete a match",
-    description="Marks a match as completed with the specified winner, if the user is a participant.",
+    summary="Завершити матч",
+    description="Позначає матч як завершений із вказаним переможцем, якщо користувач є учасником.",
 )
 async def complete_match(
     match_id: UUID4,
@@ -138,49 +136,49 @@ async def complete_match(
     db: AsyncSession = Depends(get_session),
     current_user: UserBaseResponse = Depends(get_current_user),
 ):
-    match_logger.info(f"Match complete request for match ID: {match_id}")
-    match = await MatchService.get_match_details_service(db)
+    match_logger.info(f"Запит на завершення матчу для ID: {match_id}")
+    match_service = MatchService()  # Створення екземпляра MatchService
+    match = await match_service.get_match_details_service(db, str(match_id))
     if str(current_user.id) not in [str(match.player1_id), str(match.player2_id)]:
         match_logger.warning(
-            f"Unauthorized complete request: {current_user.id} not in match {match_id}"
+            f"Несанкціонований запит на завершення: {current_user.id} не в матчі {match_id}"
         )
-        raise AuthorizationException("Not a participant in this match")
-    return await MatchService.complete_match_service(str(winner_id), db)
-
+        raise AuthorizationException("Ви не є учасником цього матчу")
+    return await match_service.complete_match_service(str(winner_id), db, str(match_id))
 
 @router.post(
     "/capitulate",
-    summary="Capitulate a match",
-    description="Allows a user to surrender a match, declaring the opponent as the winner.",
+    summary="Капітулювати в матчі",
+    description="Дозволяє користувачу здатися в матчі, оголошуючи опонента переможцем.",
 )
 async def capitulate_match(
     request: CapitulateRequest,
     db: AsyncSession = Depends(get_session),
     current_user: UserBaseResponse = Depends(get_current_user),
 ):
-    match_logger.info(f"Capitulate request for match ID: {request.match_id}")
+    match_logger.info(f"Запит на капітуляцію для матчу ID: {request.match_id}")
     if str(request.loser_id) != str(current_user.id):
         match_logger.warning(
-            f"Unauthorized capitulate request: {request.loser_id} != {current_user.id}"
+            f"Несанкціонований запит на капітуляцію: {request.loser_id} != {current_user.id}"
         )
-        raise AuthorizationException("Can only capitulate for yourself")
-    await MatchService.capitulate_match_logic(request.match_id, request.loser_id)
-    return {"message": "Match capitulated successfully"}
-
+        raise AuthorizationException("Можна капітулювати лише від свого імені")
+    match_service = MatchService()  # Створення екземпляра MatchService
+    await match_service.capitulate_match_logic(request.match_id, request.loser_id)
+    return {"message": "Матч успішно капітульовано"}
 
 @router.post(
     "/cancel_find",
-    summary="Cancel match search",
-    description="Removes the authenticated user from the matchmaking queue.",
+    summary="Скасувати пошук матчу",
+    description="Видаляє автентифікованого користувача з черги підбору матчів.",
 )
 async def cancel_find_match(
     current_user: UserBaseResponse = Depends(get_current_user),
 ):
-    match_logger.info(f"Cancel match find request for user ID: {current_user.id}")
-    return await MatchService.cancel_find_match_service(str(current_user.id))
+    match_logger.info(f"Запит на скасування пошуку матчу для користувача ID: {current_user.id}")
+    match_service = MatchService()  # ВИПРАВЛЕНО: Створення екземпляра MatchService
+    return await match_service.cancel_find_match_service(str(current_user.id))
 
-
-@router.websocket("/ws/{user_id}", name="Match notifications")
+@router.websocket("/ws/{user_id}", name="Повідомлення про матчі")
 async def websocket_endpoint(
     websocket: WebSocket,
     user_id: UUID4,
@@ -188,21 +186,21 @@ async def websocket_endpoint(
 ):
     if str(user_id) != token_data["user"]["id"]:
         match_logger.warning(
-            f"Unauthorized WebSocket connection: {user_id} != {token_data['user']['id']}"
+            f"Несанкціоноване підключення WebSocket: {user_id} != {token_data['user']['id']}"
         )
-        await websocket.close(code=1008, reason="Unauthorized")
+        await websocket.close(code=1008, reason="Несанкціоновано")
         return
 
-    match_logger.info(f"WebSocket connection for user ID: {user_id}")
+    match_logger.info(f"Підключення WebSocket для користувача ID: {user_id}")
     await manager.connect(websocket, str(user_id))
     try:
         while True:
             data = await websocket.receive_text()
-            match_logger.debug(f"Received message from user {user_id}: {data}")
+            match_logger.debug(f"Отримано повідомлення від користувача {user_id}: {data}")
     except WebSocketDisconnect:
-        match_logger.info(f"WebSocket disconnected for user ID: {user_id}")
+        match_logger.info(f"WebSocket відключено для користувача ID: {user_id}")
         manager.disconnect(websocket, str(user_id))
     except Exception as e:
-        match_logger.error(f"WebSocket error for user {user_id}: {str(e)}")
+        match_logger.error(f"Помилка WebSocket для користувача {user_id}: {str(e)}")
         if websocket.client_state.CONNECTED:
-            await websocket.close(code=1011, reason=f"Internal server error: {str(e)}")
+            await websocket.close(code=1011, reason=f"Внутрішня помилка сервера: {str(e)}")
