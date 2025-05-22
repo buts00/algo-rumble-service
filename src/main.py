@@ -81,7 +81,11 @@ app = FastAPI(
 # CORS: дозволити будь-який піддомен vercel.app та localhost:3000 для розробки
 app.add_middleware(
     CORSMiddleware,
-    allow_origin_regex=r"^(https:\/\/.*\.vercel\.app|https:\/\/algo-rubmle\.vercel\.app|http:\/\/localhost:3000)$",
+    allow_origins=[
+        "https://algo-rubmle.vercel.app",
+        "https://*.vercel.app",  # Allow all Vercel subdomains (optional)
+        "http://localhost:3000",  # For local development
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
