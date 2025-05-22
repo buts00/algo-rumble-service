@@ -1,10 +1,9 @@
-import json
 from datetime import datetime, timedelta
 from typing import List, Optional
 from uuid import UUID as UUID4, uuid4
 
 from sqlalchemy.ext.asyncio import AsyncSession
-
+import logging
 from src.data.repositories import RedisClient, get_redis_client
 from src.data.schemas import Match, User
 from src.data.repositories.match_repository import (
@@ -21,6 +20,8 @@ from src.errors import (
     ResourceNotFoundException,
 )
 from src.presentation.websocket import manager
+
+logger = logging.getLogger("app.match")
 
 class MatchService:
     QUEUE_KEY = "matchmaking_queue"
@@ -41,6 +42,7 @@ class MatchService:
         await self.redis_client.zadd(
             key, {entry.model_dump_json(): entry.timestamp.timestamp()}
         )
+        logger.info(f"Added player {user_id} to queue at rating {rating}")
         return True
 
     async def has_active_match(self, db: AsyncSession, user_id: str) -> bool:
@@ -62,6 +64,7 @@ class MatchService:
         """
         user_uuid = UUID4(user_id)
         if user_uuid != current_user.id:
+            logger.warning(f"Unauthorized match request: {user_id} != {current_user.id}")
             raise AuthorizationException("You can only find matches for yourself")
         user = await get_user_by_id(db, user_uuid)
         if not user:
@@ -71,6 +74,7 @@ class MatchService:
         added = await self.add_player_to_queue(user.id, user.rating)
         if not added:
             raise BadRequestException("Player already in queue")
+        logger.info(f"Scheduling process_match_queue for user {user_id}")
         background_tasks.add_task(
             self.process_match_queue,
             db,
@@ -85,18 +89,20 @@ class MatchService:
         """
         Process the matchmaking queue to pair players.
         """
-        rating_range = 100  # Match players within ±100 rating points
+        logger.info("Starting process_match_queue")
+        rating_range = 200  # Match players within ±200 rating points
         matched_pairs = set()  # Track matched user IDs to avoid duplicates
 
         rating_min = 0  # Minimum rating
         rating_max = 5000  # Maximum rating
         for rating in range(rating_min, rating_max + 1, 50):  # Step by 50
             key = f"{self.QUEUE_KEY}:{rating}"
-            # Fetch all entries without scores
+            # Fetch all entries
             try:
                 entries = await self.redis_client.zrange(key, 0, -1)
+                logger.info(f"Fetched {len(entries)} entries for rating {rating}: {entries}")
             except Exception as e:
-                print(f"Error fetching queue entries: {e}")
+                logger.error(f"Error fetching queue entries for rating {rating}: {e}")
                 continue
 
             if not entries:
@@ -105,7 +111,9 @@ class MatchService:
             for entry_json in entries:
                 try:
                     entry = PlayerQueueEntry.model_validate_json(entry_json)
+                    logger.info(f"Processing entry for user {entry.user_id}, rating {entry.rating}")
                     if str(entry.user_id) in matched_pairs:
+                        logger.info(f"Skipping already matched user {entry.user_id}")
                         continue
 
                     for offset in range(-rating_range, rating_range + 1, 50):
@@ -114,8 +122,9 @@ class MatchService:
                             match_entries = await self.redis_client.zrange(
                                 match_key, 0, -1
                             )
+                            logger.info(f"Fetched {len(match_entries)} match entries for rating {rating + offset}")
                         except Exception as e:
-                            print(f"Error fetching match queue entries: {e}")
+                            logger.error(f"Error fetching match queue entries for rating {rating + offset}: {e}")
                             continue
 
                         for match_json in match_entries:
@@ -123,10 +132,12 @@ class MatchService:
                                 match_entry = PlayerQueueEntry.model_validate_json(
                                     match_json
                                 )
+                                logger.info(f"Checking potential match: user {match_entry.user_id}, rating {match_entry.rating}")
                                 if (
                                     str(match_entry.user_id) in matched_pairs
                                     or match_entry.user_id == entry.user_id
                                 ):
+                                    logger.info(f"Skipping invalid match: user {match_entry.user_id}")
                                     continue
 
                                 if await self.has_active_match(
@@ -134,8 +145,10 @@ class MatchService:
                                 ) or await self.has_active_match(
                                     db, str(match_entry.user_id)
                                 ):
+                                    logger.info(f"Skipping users with active matches: {entry.user_id}, {match_entry.user_id}")
                                     continue
 
+                                logger.info(f"Creating match between {entry.user_id} and {match_entry.user_id}")
                                 new_match = Match(
                                     id=uuid4(),
                                     player1_id=entry.user_id,
@@ -147,9 +160,11 @@ class MatchService:
                                 )
                                 db.add(new_match)
                                 await db.commit()
+                                logger.info(f"Match created: ID {new_match.id}")
 
                                 await self.redis_client.zrem(key, entry_json)
                                 await self.redis_client.zrem(match_key, match_json)
+                                logger.info(f"Removed matched entries from Redis")
 
                                 matched_pairs.add(str(entry.user_id))
                                 matched_pairs.add(str(match_entry.user_id))
@@ -163,19 +178,22 @@ class MatchService:
                                 await manager.send_personal_message(
                                     notification, str(new_match.player1_id)
                                 )
+                                logger.info(f"Sent notification to player1: {new_match.player1_id}")
                                 notification["opponent_id"] = str(new_match.player1_id)
                                 await manager.send_personal_message(
                                     notification, str(new_match.player2_id)
                                 )
+                                logger.info(f"Sent notification to player2: {new_match.player2_id}")
                                 break
                             except Exception as e:
-                                print(f"Error processing match entry: {e}")
+                                logger.error(f"Error processing match entry: {e}")
                                 continue
                         if str(entry.user_id) in matched_pairs:
                             break
                 except Exception as e:
-                    print(f"Error processing queue entry: {e}")
+                    logger.error(f"Error processing queue entry: {e}")
                     continue
+        logger.info("Completed process_match_queue")
 
     async def accept_match_service(self, match_id: str, user_id: str, db: AsyncSession):
         """
@@ -271,7 +289,8 @@ class MatchService:
                     if entry.user_id == user_uuid:
                         await self.redis_client.zrem(key, entry_json)
                         removed = True
+                        logger.info(f"Removed user {user_id} from queue at rating {rating}")
                 except Exception as e:
-                    print(f"Error processing queue entry for removal: {e}")
+                    logger.error(f"Error processing queue entry for removal: {e}")
                     continue
         return {"message": "User removed from queue" if removed else "User not found in queue"}
