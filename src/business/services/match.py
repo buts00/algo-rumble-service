@@ -160,7 +160,7 @@ class MatchService:
 
                                 notification = {
                                     "match_id": str(new_match.id),
-                                    "status": "pending",
+                                    "status": "match_found",
                                     "opponent_id": str(new_match.player2_id),
                                     "timeout": acceptance_timeout,
                                 }
