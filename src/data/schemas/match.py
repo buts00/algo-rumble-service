@@ -67,6 +67,12 @@ class PlayerQueueEntry(BaseModel):
     rating: int
     timestamp: datetime = datetime.utcnow()
 
+    class Config:
+        json_encoders = {
+            UUID4: str,  # Automatically convert UUID to string in JSON
+            datetime: lambda v: v.isoformat(),  # Convert datetime to ISO format
+        }
+
 class MatchQueueResult(BaseModel):
     success: bool
     message: str
