@@ -4,7 +4,7 @@ from pydantic import UUID4
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.business.services.auth_dependency import (AccessTokenFromCookie,
-                                                   get_current_user)
+                                                   get_current_user, AccessTokenFromWebSocket)
 from src.business.services.match import MatchService
 from src.config import logger
 from src.data.repositories import get_session
@@ -183,7 +183,7 @@ async def cancel_find_match(
 async def websocket_endpoint(
     websocket: WebSocket,
     user_id: UUID4,
-    token_data: dict = Depends(AccessTokenFromCookie()),
+    token_data: dict = Depends(AccessTokenFromWebSocket()),
 ):
     if str(user_id) != token_data["user"]["id"]:
         match_logger.warning(
