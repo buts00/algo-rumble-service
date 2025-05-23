@@ -35,7 +35,19 @@ async def create_problem_in_db(db: AsyncSession, problem: ProblemCreate):
         db.add(new_problem)
         await db.commit()
         await db.refresh(new_problem)
-        await upload_problem_to_s3(str(new_problem.id), problem.problem.dict())
+        # Явно серіалізуємо ProblemDetail, перетворюючи UUID у рядки
+        problem_data = problem.problem.dict()
+        # Рекурсивно перетворюємо UUID у рядки
+        def convert_uuid_to_str(data):
+            if isinstance(data, dict):
+                return {k: convert_uuid_to_str(v) for k, v in data.items()}
+            elif isinstance(data, list):
+                return [convert_uuid_to_str(item) for item in data]
+            elif isinstance(data, uuid.UUID):
+                return str(data)
+            return data
+        problem_data = convert_uuid_to_str(problem_data)
+        await upload_problem_to_s3(str(new_problem.id), problem_data)
         return new_problem
     except Exception as e:
         problem_logger.error(f"Error in create_problem_in_db: {str(e)}", exc_info=True)
