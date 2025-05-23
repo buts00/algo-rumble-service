@@ -28,7 +28,7 @@ async def create_problem_in_db(
             id=problem_id,
             rating=problem_data.rating,
             topics=problem_data.topics,
-            name=problem_data.problem.name,
+            title=problem_data.problem.name,  # Map 'name' from ProblemCreate.problem to 'title'
             description=problem_data.problem.description,
             time_limit=problem_data.problem.time_limit,
             memory_limit=problem_data.problem.memory_limit,
@@ -44,7 +44,7 @@ async def create_problem_in_db(
         # Upload problem data to DigitalOcean Spaces
         problem_data_json = json.dumps(
             {
-                "name": db_problem.name,
+                "title": db_problem.title,  # Use 'title' to match database field
                 "description": db_problem.description,
                 "time_limit": db_problem.time_limit,
                 "memory_limit": db_problem.memory_limit,
@@ -133,7 +133,7 @@ async def update_problem_in_db(
         # Update problem data in DigitalOcean Spaces
         problem_data_json = json.dumps(
             {
-                "name": problem.name,
+                "title": problem.title,
                 "description": problem.description,
                 "time_limit": problem.time_limit,
                 "memory_limit": problem.memory_limit,
