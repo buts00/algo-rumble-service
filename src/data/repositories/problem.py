@@ -23,6 +23,9 @@ from fastapi import HTTPException
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+import uuid
+from datetime import datetime
+
 async def create_problem_in_db(db: AsyncSession, problem: ProblemCreate):
     try:
         new_problem = Problem(
@@ -35,18 +38,20 @@ async def create_problem_in_db(db: AsyncSession, problem: ProblemCreate):
         db.add(new_problem)
         await db.commit()
         await db.refresh(new_problem)
-        # Явно серіалізуємо ProblemDetail, перетворюючи UUID у рядки
+        # Явно серіалізуємо ProblemDetail
         problem_data = problem.problem.dict()
-        # Рекурсивно перетворюємо UUID у рядки
-        def convert_uuid_to_str(data):
+        # Перетворюємо datetime і UUID у рядки
+        def convert_to_json_serializable(data):
             if isinstance(data, dict):
-                return {k: convert_uuid_to_str(v) for k, v in data.items()}
+                return {k: convert_to_json_serializable(v) for k, v in data.items()}
             elif isinstance(data, list):
-                return [convert_uuid_to_str(item) for item in data]
+                return [convert_to_json_serializable(item) for item in data]
             elif isinstance(data, uuid.UUID):
                 return str(data)
+            elif isinstance(data, datetime):
+                return data.isoformat()  # Перетворюємо datetime у ISO формат
             return data
-        problem_data = convert_uuid_to_str(problem_data)
+        problem_data = convert_to_json_serializable(problem_data)
         await upload_problem_to_s3(str(new_problem.id), problem_data)
         return new_problem
     except Exception as e:
