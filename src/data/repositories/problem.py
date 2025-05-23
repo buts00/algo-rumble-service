@@ -21,7 +21,7 @@ from src.data.repositories.s3 import upload_problem_to_s3
 from fastapi import HTTPException
 
 
-async def create_problem_in_db(db: Session, problem: ProblemCreate):
+async def create_problem_in_db(db: AsyncSession, problem: ProblemCreate):
     try:
         new_problem = Problem(
             id=uuid.uuid4(),
@@ -31,12 +31,9 @@ async def create_problem_in_db(db: Session, problem: ProblemCreate):
             topics=problem.topics,
         )
         db.add(new_problem)
-        db.commit()
-        db.refresh(new_problem)
+        await db.commit()
+        await db.refresh(new_problem)
         await upload_problem_to_s3(str(new_problem.id), problem.problem)
-        db.commit()
-        db.refresh(new_problem)
-
         return new_problem
     except Exception as e:
         raise HTTPException(
@@ -48,7 +45,6 @@ async def create_problem_in_db(db: Session, problem: ProblemCreate):
                 detail=str(e)
             ).dict()
         )
-
 async def create_testcases_in_db(
     db: AsyncSession, problem_id: uuid.UUID, testcases: List[Dict[str, str]]
 ) -> TestCaseResponse:
