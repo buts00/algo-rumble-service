@@ -28,7 +28,7 @@ async def create_problem_in_db(
             id=problem_id,
             rating=problem_data.rating,
             topics=problem_data.topics,
-            title=problem_data.problem.name,  # Map 'name' from ProblemCreate.problem to 'title'
+            name=problem_data.problem.name,  # Use 'name' instead of 'title'
             description=problem_data.problem.description,
             time_limit=problem_data.problem.time_limit,
             memory_limit=problem_data.problem.memory_limit,
@@ -44,7 +44,7 @@ async def create_problem_in_db(
         # Upload problem data to DigitalOcean Spaces
         problem_data_json = json.dumps(
             {
-                "title": db_problem.title,  # Use 'title' to match database field
+                "name": db_problem.name,  # Use 'name' instead of 'title'
                 "description": db_problem.description,
                 "time_limit": db_problem.time_limit,
                 "memory_limit": db_problem.memory_limit,
@@ -133,7 +133,7 @@ async def update_problem_in_db(
         # Update problem data in DigitalOcean Spaces
         problem_data_json = json.dumps(
             {
-                "title": problem.title,
+                "name": problem.name,  # Use 'name' instead of 'title'
                 "description": problem.description,
                 "time_limit": problem.time_limit,
                 "memory_limit": problem.memory_limit,
@@ -167,7 +167,7 @@ async def delete_problem_from_db(db: AsyncSession, problem_id: UUID4) -> dict:
         await db.execute(delete(Problem).where(Problem.id == problem_id))
         await db.commit()
 
-        # Note: DigitalOcean Spaces testcases cleanup should be handled separately (e.g., via S3 lifecycle rules)
+        # Note: DigitalOcean Spaces testcases cleanup should be handled separately
         problem_logger.info(f"Deleted problem ID: {problem_id}")
         return {"message": f"Problem {problem_id} deleted successfully"}
     except ResourceNotFoundException:
