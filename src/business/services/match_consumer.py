@@ -2,8 +2,9 @@ import asyncio
 import logging
 import sys
 
-from src.business.services.match import MatchService
+from src.business.services.match import process_match_queue
 from src.data.repositories.database import get_session
+from src.presentation.routes.match import match_acceptance_timeout, match_draw_timeout
 
 # Configure logging
 logging.basicConfig(
@@ -20,15 +21,14 @@ async def run_consumer():
     Run the match queue consumer continuously.
     """
     logger.info("Starting match queue consumer")
-    match_service = MatchService()
     while True:
         try:
             async for db in get_session():
                 logger.info("Processing match queue...")
-                matches = await match_service.process_match_queue(
+                matches = await process_match_queue(
                     db,
-                    match_service.match_acceptance_timeout,
-                    match_service.match_draw_timeout,
+                    match_acceptance_timeout,
+                    match_draw_timeout,
                 )
                 logger.info(f"Matches created in this cycle: {len(matches)}")
                 for m in matches:
