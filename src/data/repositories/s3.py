@@ -25,9 +25,9 @@ def get_s3_client():
 
 
 async def upload_problem_to_s3(problem_id: str, problem_data: Dict[str, Any]) -> str:
-    """Upload problem data to DigitalOcean Spaces."""
     s3_client = get_s3_client()
     try:
+        s3_logger.debug(f"Serializing problem data: {problem_data}")
         problem_json = json.dumps(problem_data)
         bucket_name = AppConfig.AWS_BUCKET_NAME
         file_path = f"problems/{problem_id}.json"
@@ -42,6 +42,9 @@ async def upload_problem_to_s3(problem_id: str, problem_data: Dict[str, Any]) ->
         return file_path
     except ClientError as e:
         s3_logger.error(f"Error uploading problem {problem_id} to S3: {str(e)}")
+        raise
+    except TypeError as e:
+        s3_logger.error(f"Serialization error for problem {problem_id}: {str(e)}")
         raise
 
 

@@ -21,6 +21,8 @@ from src.data.repositories.s3 import upload_problem_to_s3
 from fastapi import HTTPException
 
 
+from sqlalchemy.ext.asyncio import AsyncSession
+
 async def create_problem_in_db(db: AsyncSession, problem: ProblemCreate):
     try:
         new_problem = Problem(
@@ -45,6 +47,7 @@ async def create_problem_in_db(db: AsyncSession, problem: ProblemCreate):
                 detail=str(e)
             ).dict()
         )
+
 async def create_testcases_in_db(
     db: AsyncSession, problem_id: uuid.UUID, testcases: List[Dict[str, str]]
 ) -> TestCaseResponse:
