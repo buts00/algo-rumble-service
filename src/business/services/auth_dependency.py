@@ -1,84 +1,57 @@
-from abc import ABC, abstractmethod
-
 from fastapi import Depends, HTTPException, Request, status
-
+from starlette.websockets import WebSocket, WebSocketDisconnect
 from src.data.schemas import UserBaseResponse
-from src.data.repositories import RedisClient, get_redis_client
-from src.business.services.auth import UserService
-from src.business.services.auth_util import decode_token
 
-
-class TokenFromCookie(ABC):
-    def __init__(self, cookie_name: str):
+class TokenFromCookie:
+    def __init__(self, cookie_name: str = "access_token"):
         self.cookie_name = cookie_name
 
-    async def __call__(
-        self, request: Request, redis_client: RedisClient = Depends(get_redis_client)
-    ) -> dict:
+    async def __call__(self, request: Request) -> dict:
         token = request.cookies.get(self.cookie_name)
-
         if not token:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail=f"{self.cookie_name} not found in cookies",
+                detail=f"{self.cookie_name} not found in cookies"
             )
 
+        from src.business.services.auth_util import decode_token
         token_data = decode_token(token)
         if not token_data:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="Invalid or expired token",
+                detail="Invalid or expired token"
             )
 
-        if redis_client.token_in_blocklist(token_data["jti"]):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Token is blacklisted",
-            )
-
-        self.verify_token_data(token_data)
         return token_data
 
-    @abstractmethod
-    def verify_token_data(self, token_data: dict): ...
+class TokenFromWebSocket(TokenFromCookie):
+    async def __call__(self, websocket: WebSocket) -> dict:
+        token = websocket.cookies.get(self.cookie_name)
+        if not token:
+            await websocket.close(code=1008, reason=f"{self.cookie_name} not found")
+            raise WebSocketDisconnect(code=1008)
 
+        from src.business.services.auth_util import decode_token
+        token_data = decode_token(token)
+        if not token_data:
+            await websocket.close(code=1008, reason="Invalid or expired token")
+            raise WebSocketDisconnect(code=1008)
 
-class AccessTokenFromCookie(TokenFromCookie):
-    def __init__(self):
-        super().__init__("access_token")
+        return token_data
 
-    def verify_token_data(self, token_data: dict):
-        if token_data.get("is_refresh"):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Access token required",
-            )
-
+AccessTokenFromCookie = TokenFromCookie
+AccessTokenFromWebSocket = TokenFromWebSocket
 
 class RefreshTokenFromCookie(TokenFromCookie):
     def __init__(self):
-        super().__init__("refresh_token")
+        super().__init__(cookie_name="refresh_token")
 
-    def verify_token_data(self, token_data: dict):
-        if not token_data.get("is_refresh"):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Refresh token required",
-            )
-
-
-def get_current_user(
-    token_data: dict = Depends(AccessTokenFromCookie()),
-) -> UserBaseResponse:
+def get_current_user(token_data: dict = Depends(AccessTokenFromCookie())) -> UserBaseResponse:
     try:
         user = UserBaseResponse(**token_data["user"])
         return user
-    except Exception as _:
+    except Exception:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Could not validate user",
+            detail="Could not validate user"
         )
-
-
-def get_user_service() -> UserService:
-    return UserService()

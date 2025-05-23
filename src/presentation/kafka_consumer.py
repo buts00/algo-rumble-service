@@ -1,7 +1,9 @@
 import json
 import logging
 import os
+
 from aiokafka import AIOKafkaConsumer
+
 from src.presentation.websocket import manager
 
 logger = logging.getLogger("kafka_consumer")

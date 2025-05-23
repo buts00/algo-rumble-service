@@ -75,12 +75,19 @@ async def app_exception_handler(request: Request, exc: AppException):
 
 
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
-    """Handler for request validation errors."""
-    errors = exc.errors()
-    logger.error(f"Validation error: {errors}")
+    formatted_errors = [
+        {
+            "type": error["type"],
+            "loc": error["loc"],
+            "msg": error["msg"],
+            "input": error["input"],
+        }
+        for error in exc.errors()
+    ]
+
     return JSONResponse(
         status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-        content={"detail": errors},
+        content={"detail": formatted_errors},
     )
 
 

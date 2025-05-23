@@ -17,7 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.data.schemas import User, UserBaseResponse
 from src.config import logger, Config
 from src.data.repositories import get_session
-from src.data.schemas.match_schemas.match import CapitulateRequest
+from src.data.schemas.match import CapitulateRequest
 from src.errors import (
     AuthorizationException,
     BadRequestException,
@@ -27,13 +27,15 @@ from src.errors import (
 )
 
 from src.data.schemas import AcceptMatchRequest, FindMatchRequest, Match, MatchStatus
-from src.business.services.match_rating import update_ratings_after_match
+from src.business.services.match_rating import RatingService
 from src.business.services.match import (
     add_player_to_queue,
     process_match_queue,
     send_match_notification,
     capitulate_match_logic,
     remove_player_from_queue,
+    accept_match_service,
+    send_accept_status,  # Імпортуємо з services/match.py
 )
 from src.business.services.auth_dependency import get_current_user
 from src.presentation.websocket import manager
@@ -42,25 +44,6 @@ from src.presentation.websocket import manager
 match_logger = logger.getChild("match")
 
 router = APIRouter(prefix="/match", tags=["match"])
-
-
-async def send_accept_status(match, db: AsyncSession):
-    # Отримуємо юзернейми
-    result1 = await db.execute(select(User).where(User.id == match.player1_id))
-    player1 = result1.scalar_one_or_none()
-    result2 = await db.execute(select(User).where(User.id == match.player2_id))
-    player2 = result2.scalar_one_or_none()
-    data = {
-        "status": "match_accept_status",
-        "player1_id": str(player1.id) if player1 else "",
-        "player1_username": player1.username if player1 else "",
-        "player1_accepted": bool(match.player1_accepted),
-        "player2_id": str(player2.id) if player2 else "",
-        "player2_username": player2.username if player2 else "",
-        "player2_accepted": bool(match.player2_accepted),
-    }
-    await send_match_notification(str(match.player1_id), data)
-    await send_match_notification(str(match.player2_id), data)
 
 
 async def match_acceptance_timeout(match_id: str, db: AsyncSession):
@@ -84,23 +67,24 @@ async def match_acceptance_timeout(match_id: str, db: AsyncSession):
         result2 = await db.execute(select(User).where(User.id == match.player2_id))
         player2 = result2.scalar_one_or_none()
         for user, other in [(player1, player2), (player2, player1)]:
-            await send_match_notification(
-                str(user.id),
-                {
-                    "status": "match_cancelled",
-                    "match_id": str(match.id),
-                    "reason": (
-                        f"User '{other.username}' did not accept in time"
-                        if other
-                        and not (
-                            match.player1_accepted
-                            if user == player1
-                            else match.player2_accepted
-                        )
-                        else "You did not accept in time"
-                    ),
-                },
-            )
+            if user:
+                await send_match_notification(
+                    str(user.id),
+                    {
+                        "status": "match_cancelled",
+                        "match_id": str(match.id),
+                        "reason": (
+                            f"User '{other.username}' did not accept in time"
+                            if other
+                            and not (
+                                match.player1_accepted
+                                if user == player1
+                                else match.player2_accepted
+                            )
+                            else "You did not accept in time"
+                        ),
+                    },
+                )
 
 
 async def match_draw_timeout(match_id: str, db: AsyncSession):
@@ -118,14 +102,15 @@ async def match_draw_timeout(match_id: str, db: AsyncSession):
         result2 = await db.execute(select(User).where(User.id == match.player2_id))
         player2 = result2.scalar_one_or_none()
         for user in [player1, player2]:
-            await send_match_notification(
-                str(user.id),
-                {
-                    "status": "match_draw",
-                    "match_id": str(match.id),
-                    "message": "Match ended in a draw. No one submitted a correct solution in 45 minutes.",
-                },
-            )
+            if user:
+                await send_match_notification(
+                    str(user.id),
+                    {
+                        "status": "match_draw",
+                        "match_id": str(match.id),
+                        "message": "Match ended in a draw. No one submitted a correct solution in 45 minutes.",
+                    },
+                )
 
 
 @router.post("/find")
@@ -216,7 +201,6 @@ async def find_match(
 @router.post("/accept")
 async def accept_match(
     request_data: AcceptMatchRequest,
-    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_session),
     current_user: UserBaseResponse = Depends(get_current_user),
     request: Request = None,
@@ -225,118 +209,19 @@ async def accept_match(
     Accept a match invitation.
     Both players must accept for the match to start.
     """
-    user_id = request_data.user_id
+    user_id = str(current_user.id)  # Використовуємо ID автентифікованого користувача
     match_id = request_data.match_id
     match_logger.info(
         f"Match acceptance request for user ID: {user_id}, match ID: {match_id}"
     )
 
     try:
-        # Convert IDs to UUID
-        try:
-            user_uuid = uuid.UUID(user_id)
-            match_uuid = uuid.UUID(match_id)
-        except ValueError:
-            match_logger.warning(
-                f"Match acceptance failed: Invalid ID format: user={user_id}, match={match_id}"
-            )
-            raise BadRequestException(detail="Invalid ID format")
-
-        # Check if user exists
-        result = await db.execute(select(User).where(User.id == user_uuid))
-        user = result.scalar_one_or_none()
-        if not user:
-            match_logger.warning(f"Match acceptance failed: User not found: {user_id}")
-            raise ResourceNotFoundException(detail="User not found")
-
-        # Check if match exists
-        result = await db.execute(select(Match).where(Match.id == match_uuid))
-        match = result.scalars().first()
-        if not match:
-            match_logger.warning(
-                f"Match acceptance failed: Match not found: {match_id}"
-            )
-            raise ResourceNotFoundException(detail="Match not found")
-
-        # Check if user is part of the match
-        if match.player1_id != user_uuid and match.player2_id != user_uuid:
-            match_logger.warning(
-                f"Match acceptance failed: User not part of match: user={user_id}, match={match_id}"
-            )
-            raise AuthorizationException(detail="You are not part of this match")
-
-        # Check if match is in the correct state
-        if match.status != MatchStatus.PENDING:
-            match_logger.warning(
-                f"Match acceptance failed: Match not in PENDING state: {match_id}, current state: {match.status}"
-            )
-            raise ValidationException(detail="Match is not in a pending state")
-
-        # Update match acceptance status
-        if match.player1_id == user_uuid:
-            match.player1_accepted = True
-            match_logger.info(f"Player 1 accepted match: {match_id}")
-        else:
-            match.player2_accepted = True
-            match_logger.info(f"Player 2 accepted match: {match_id}")
-
-        # Send acceptance status to both players (with usernames)
-        await send_accept_status(match, db)
-
-        # If both players accepted, update match status
-        if match.player1_accepted and match.player2_accepted:
-            match.status = MatchStatus.ACTIVE
-            match.start_time = datetime.utcnow()
-            match_logger.info(f"Match activated: {match_id}")
-
-            # Notify both players only if match_id and problem_id are valid
-            if match.id and match.problem_id:
-                # Get usernames
-                result1 = await db.execute(
-                    select(User).where(User.id == match.player1_id)
-                )
-                player1 = result1.scalar_one_or_none()
-                result2 = await db.execute(
-                    select(User).where(User.id == match.player2_id)
-                )
-                player2 = result2.scalar_one_or_none()
-                await send_match_notification(
-                    str(match.player1_id),
-                    {
-                        "status": "match_started",
-                        "match_id": str(match.id),
-                        "opponent_username": player2.username if player2 else "",
-                        "problem_id": str(match.problem_id),
-                    },
-                )
-                await send_match_notification(
-                    str(match.player2_id),
-                    {
-                        "status": "match_started",
-                        "match_id": str(match.id),
-                        "opponent_username": player1.username if player1 else "",
-                        "problem_id": str(match.problem_id),
-                    },
-                )
-                # Start 45-min draw timer
-                background_tasks.add_task(match_draw_timeout, str(match.id), db)
-            else:
-                match_logger.warning(
-                    f"Not sending match_started notification due to missing match_id/problem_id: match_id={match.id}, problem_id={match.problem_id}"
-                )
-
-        # Commit changes
-        db.add(match)
-        await db.commit()
+        # Викликаємо шар бізнес-логіки для обробки прийняття матчу
+        result = await accept_match_service(db, match_id, user_id)
         match_logger.info(
             f"Match acceptance processed successfully: user={user_id}, match={match_id}"
         )
-
-        return {
-            "status": "accepted",
-            "match_id": str(match.id),
-            "match_status": match.status,
-        }
+        return result
     except (
         BadRequestException,
         ResourceNotFoundException,
@@ -523,9 +408,9 @@ async def get_active_match(
             "match_id": str(active_match.id),
             "status": active_match.status,
             "opponent": {
-                "id": str(opponent.id),
-                "username": opponent.username,
-                "rating": opponent.rating,
+                "id": str(opponent.id) if opponent else "",
+                "username": opponent.username if opponent else "",
+                "rating": opponent.rating if opponent else 0,
             },
             "problem_id": (
                 str(active_match.problem_id) if active_match.problem_id else None
@@ -621,9 +506,9 @@ async def get_match_history(
                 {
                     "match_id": str(match.id),
                     "opponent": {
-                        "id": str(opponent.id),
-                        "username": opponent.username,
-                        "rating": opponent.rating,
+                        "id": str(opponent.id) if opponent else "",
+                        "username": opponent.username if opponent else "",
+                        "rating": opponent.rating if opponent else 0,
                     },
                     "problem_id": str(match.problem_id) if match.problem_id else None,
                     "start_time": match.start_time,
@@ -686,15 +571,15 @@ async def get_match_details(
             "match_id": str(match.id),
             "status": match.status,
             "player1": {
-                "id": str(player1.id),
-                "username": player1.username,
-                "rating": player1.rating,
+                "id": str(player1.id) if player1 else "",
+                "username": player1.username if player1 else "",
+                "rating": player1.rating if player1 else 0,
                 "accepted": match.player1_accepted,
             },
             "player2": {
-                "id": str(player2.id),
-                "username": player2.username,
-                "rating": player2.rating,
+                "id": str(player2.id) if player2 else "",
+                "username": player2.username if player2 else "",
+                "rating": player2.rating if player2 else 0,
                 "accepted": match.player2_accepted,
             },
             "problem_id": str(match.problem_id) if match.problem_id else None,
@@ -776,13 +661,8 @@ async def complete_match(
         player2 = result.scalar_one_or_none()
 
         if player1 and player2:
-            player1_won = match.player1_id == winner_uuid
-            new_ratings = update_ratings_after_match(
-                player1.rating, player2.rating, player1_won
-            )
+            await RatingService.update_ratings_after_match(db, winner_uuid, match.player1_id if match.player2_id == winner_uuid else match.player2_id)
 
-            player1.rating = new_ratings[0]
-            player2.rating = new_ratings[1]
             match_logger.info(
                 f"Ratings updated: player1={player1.username} ({player1.rating}), player2={player2.username} ({player2.rating})"
             )
@@ -797,7 +677,7 @@ async def complete_match(
                 "status": "match_completed",
                 "match_id": str(match.id),
                 "winner_id": str(match.winner_id),
-                "new_rating": player1.rating,
+                "new_rating": player1.rating if player1 else 0,
             },
         )
 
@@ -807,7 +687,7 @@ async def complete_match(
                 "status": "match_completed",
                 "match_id": str(match.id),
                 "winner_id": str(match.winner_id),
-                "new_rating": player2.rating,
+                "new_rating": player2.rating if player2 else 0,
             },
         )
 
@@ -822,8 +702,8 @@ async def complete_match(
             "status": "completed",
             "match_id": str(match.id),
             "winner_id": str(match.winner_id),
-            "player1_rating": player1.rating,
-            "player2_rating": player2.rating,
+            "player1_rating": player1.rating if player1 else 0,
+            "player2_rating": player2.rating if player2 else 0,
         }
     except (
         BadRequestException,
@@ -864,7 +744,7 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str):
             manager.disconnect(websocket, user_id)
     except Exception as e:
         match_logger.error(f"WebSocket error for user {user_id}: {str(e)}")
-        if websocket.client_state.CONNECTED:
+        if websocket.client_state == websocket.client_state.CONNECTED:
             await websocket.close(code=1011, reason=f"Internal server error: {str(e)}")
 
 
@@ -900,7 +780,7 @@ async def capitulate_match(
         await capitulate_match_logic(db, request.match_id, request.loser_id)
         return {"message": "Match capitulated successfully."}
     except Exception as e:
-        logger.error(f"Failed to capitulate match: {e}")
+        match_logger.error(f"Failed to capitulate match: {e}")
         raise BadRequestException("Could not capitulate match.")
 
 
@@ -919,7 +799,7 @@ async def cancel_find_match(
         user_uuid = uuid.UUID(user_id)
     except ValueError:
         match_logger.warning(f"Cancel find failed: Invalid user ID format: {user_id}")
-        raise BadRequestException(detail="Invalid user ID format")
+        raise BadRequestException( detail="Invalid user ID format")
 
     removed = await remove_player_from_queue(user_uuid)
     if removed:
