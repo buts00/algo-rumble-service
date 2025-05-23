@@ -77,17 +77,20 @@ async def create_testcases_in_db(
         testcase_ids = []
         for idx, tc in enumerate(testcases, 1):
             testcase_id = uuid.uuid4()
-            testcase_data_json = json.dumps(
-                {"input": tc["input"], "output": tc["output"]}
-            )
-            s3_key = f"problems/{problem_id}/testcases/{testcase_id}.json"
-            await upload_testcase_to_s3(s3_key, testcase_data_json)
+            input_data = tc["input"]
+            output_data = tc["output"]
+            await upload_testcase_to_s3(str(problem_id), idx, input_data, output_data)
             testcase_ids.append(testcase_id)
 
         problem_logger.info(
             f"Створено {len(testcases)} тестових випадків для проблеми з ID: {problem_id}"
         )
-        return TestCaseResponse(problem_id=problem_id, testcase_ids=testcase_ids)
+        return TestCaseResponse(
+            problem_id=problem_id,
+            testcase_count=len(testcases),
+            success=True,
+            message="Test cases created successfully"
+        )
     except ResourceNotFoundException:
         raise
     except Exception as e:
