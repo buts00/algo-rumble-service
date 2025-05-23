@@ -1,4 +1,5 @@
 import json
+import uuid
 from typing import Any, Dict, List
 
 from pydantic import UUID4
@@ -18,9 +19,13 @@ async def create_problem_in_db(
 ) -> ProblemResponse:
     """Create a new problem in the database and upload to DigitalOcean Spaces."""
     try:
+        # Generate a new UUID for the problem
+        problem_id = uuid.uuid4()
+        problem_logger.info(f"Creating problem with ID: {problem_id}, data: {problem_data.dict()}")
+
         # Create problem in database
         db_problem = Problem(
-            id=UUID4(),
+            id=problem_id,
             rating=problem_data.rating,
             topics=problem_data.topics,
             name=problem_data.problem.name,
@@ -57,7 +62,7 @@ async def create_problem_in_db(
     except Exception as e:
         problem_logger.error(f"Failed to create problem: {str(e)}")
         await db.rollback()
-        raise DatabaseException(detail="Failed to create problem")
+        raise DatabaseException(detail=f"Failed to create problem: {str(e)}")
 
 
 async def create_testcases_in_db(
@@ -73,7 +78,7 @@ async def create_testcases_in_db(
         # Create test cases in DigitalOcean Spaces
         testcase_ids = []
         for idx, tc in enumerate(testcases, 1):
-            testcase_id = UUID4()
+            testcase_id = uuid.uuid4()
             testcase_data_json = json.dumps(
                 {"input": tc["input"], "output": tc["output"]}
             )
@@ -91,7 +96,7 @@ async def create_testcases_in_db(
         problem_logger.error(
             f"Failed to create testcases for problem {problem_id}: {str(e)}"
         )
-        raise DatabaseException(detail="Failed to create testcases")
+        raise DatabaseException(detail=f"Failed to create testcases: {str(e)}")
 
 
 async def get_problem_by_id(db: AsyncSession, problem_id: UUID4) -> ProblemResponse:
@@ -106,7 +111,7 @@ async def get_problem_by_id(db: AsyncSession, problem_id: UUID4) -> ProblemRespo
         raise
     except Exception as e:
         problem_logger.error(f"Failed to retrieve problem {problem_id}: {str(e)}")
-        raise DatabaseException(detail="Failed to retrieve problem")
+        raise DatabaseException(detail=f"Failed to retrieve problem: {str(e)}")
 
 
 async def update_problem_in_db(
@@ -131,7 +136,7 @@ async def update_problem_in_db(
                 "name": problem.name,
                 "description": problem.description,
                 "time_limit": problem.time_limit,
-                "memory_limit": problem.time_limit,
+                "memory_limit": problem.memory_limit,
                 "input_description": problem.input_description,
                 "output_description": problem.output_description,
                 "examples": problem.examples,
@@ -148,7 +153,7 @@ async def update_problem_in_db(
     except Exception as e:
         problem_logger.error(f"Failed to update problem {problem_id}: {str(e)}")
         await db.rollback()
-        raise DatabaseException(detail="Failed to update problem")
+        raise DatabaseException(detail=f"Failed to update problem: {str(e)}")
 
 
 async def delete_problem_from_db(db: AsyncSession, problem_id: UUID4) -> dict:
@@ -170,7 +175,7 @@ async def delete_problem_from_db(db: AsyncSession, problem_id: UUID4) -> dict:
     except Exception as e:
         problem_logger.error(f"Failed to delete problem {problem_id}: {str(e)}")
         await db.rollback()
-        raise DatabaseException(detail="Failed to delete problem")
+        raise DatabaseException(detail=f"Failed to delete problem: {str(e)}")
 
 
 async def list_problems_from_db(
@@ -191,4 +196,4 @@ async def list_problems_from_db(
         return [ProblemResponse.from_orm(problem) for problem in problems]
     except Exception as e:
         problem_logger.error(f"Failed to list problems: {str(e)}")
-        raise DatabaseException(detail="Failed to list problems")
+        raise DatabaseException(detail=f"Failed to list problems: {str(e)}")
