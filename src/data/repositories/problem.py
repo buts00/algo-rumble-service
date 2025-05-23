@@ -18,55 +18,41 @@ from src.errors import DatabaseException, ResourceNotFoundException
 
 problem_logger = logger.getChild("problem_repository")
 
+from src.data.schemas import Problem, ProblemCreate, ProblemResponse, ProblemDetail
+from sqlalchemy.orm import Session
+import uuid
+from datetime import datetime
+from src.data.repositories import upload_problem_to_s3
+from fastapi import HTTPException
 
-async def create_problem_in_db(
-    db: AsyncSession, problem_data: ProblemCreate
-) -> ProblemResponse:
+
+def create_problem_in_db(db: Session, problem: ProblemCreate):
     try:
-        problem_id = uuid.uuid4()
-        problem_logger.info(f"Створюємо проблему з ID: {problem_id}, дані: {problem_data.dict()}")
-
-        # Створюємо проблему в базі даних
-        db_problem = Problem(
-            id=problem_id,
-            rating=problem_data.rating,
-            topics=problem_data.topics,
-            title=problem_data.problem.title,
-            description=problem_data.problem.description,
-            time_limit=problem_data.problem.time_limit,
-            memory_limit=problem_data.problem.memory_limit,
-            input_description=problem_data.problem.input_description,
-            output_description=problem_data.problem.output_description,
-            examples=problem_data.problem.examples,
-            constraints=problem_data.problem.constraints,
+        new_problem = Problem(
+            id=uuid.uuid4(),
+            created_at=datetime.now(),
+            updated_at=datetime.now(),
+            rating=problem.rating,
+            topics=problem.topics,
         )
-        db.add(db_problem)
-        await db.commit()
-        await db.refresh(db_problem)
+        db.add(new_problem)
+        db.commit()
+        db.refresh(new_problem)
+        upload_problem_to_s3(str(new_problem.id), problem.problem)
+        db.commit()
+        db.refresh(new_problem)
 
-        # Завантажуємо дані проблеми в DigitalOcean Spaces
-        problem_data_json = json.dumps(
-            {
-                "title": db_problem.title,
-                "description": db_problem.description,
-                "time_limit": db_problem.time_limit,
-                "memory_limit": db_problem.memory_limit,
-                "input_description": db_problem.input_description,
-                "output_description": db_problem.output_description,
-                "examples": db_problem.examples,
-                "constraints": db_problem.constraints,
-            }
-        )
-        s3_key = f"problems/{db_problem.id}/problem.json"
-        await upload_problem_to_s3(s3_key, problem_data_json)
-
-        problem_logger.info(f"Створено проблему з ID: {db_problem.id}")
-        return ProblemResponse.from_orm(db_problem)
+        return new_problem
     except Exception as e:
-        problem_logger.error(f"Не вдалося створити проблему: {str(e)}")
-        await db.rollback()
-        raise DatabaseException(detail=f"Не вдалося створити проблему: {str(e)}")
-
+        raise HTTPException(
+            status_code=500,
+            detail=ProblemDetail(
+                type="error",
+                title="Failed to create problem",
+                status=500,
+                detail=str(e)
+            ).dict()
+        )
 
 async def create_testcases_in_db(
     db: AsyncSession, problem_id: uuid.UUID, testcases: List[Dict[str, str]]
@@ -133,7 +119,6 @@ async def update_problem_in_db(
         await db.commit()
         await db.refresh(problem)
 
-        # Оновлюємо дані проблеми в DigitalOcean Spaces
         problem_data_json = json.dumps(
             {
                 "title": problem.title,
