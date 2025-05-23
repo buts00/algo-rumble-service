@@ -6,13 +6,8 @@ from sqlalchemy import select, delete, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.config import logger
-from src.data.repositories.s3 import upload_problem_to_s3, upload_testcase_to_s3
-from src.data.schemas import Problem
-from src.data.schemas.problem import (
-    ProblemCreate,
-    ProblemResponse,
+from src.data.repositories.s3 import upload_testcase_to_s3
 
-)
 from src.data.schemas.testcase import TestCaseResponse
 from src.errors import DatabaseException, ResourceNotFoundException
 
@@ -22,7 +17,7 @@ from src.data.schemas import Problem, ProblemCreate, ProblemResponse, ProblemDet
 from sqlalchemy.orm import Session
 import uuid
 from datetime import datetime
-from src.data.repositories import upload_problem_to_s3
+from src.data.repositories.s3 import upload_problem_to_s3
 from fastapi import HTTPException
 
 
