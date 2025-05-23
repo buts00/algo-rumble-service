@@ -61,4 +61,5 @@ __all__ = [
     "TestCase",
     "SubmissionCreate",
     "CapitulateRequest",
+    "ProblemDetail"
 ]

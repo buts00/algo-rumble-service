@@ -21,7 +21,7 @@ from src.data.repositories.s3 import upload_problem_to_s3
 from fastapi import HTTPException
 
 
-def create_problem_in_db(db: Session, problem: ProblemCreate):
+async def create_problem_in_db(db: Session, problem: ProblemCreate):
     try:
         new_problem = Problem(
             id=uuid.uuid4(),
@@ -33,7 +33,7 @@ def create_problem_in_db(db: Session, problem: ProblemCreate):
         db.add(new_problem)
         db.commit()
         db.refresh(new_problem)
-        upload_problem_to_s3(str(new_problem.id), problem.problem)
+        await upload_problem_to_s3(str(new_problem.id), problem.problem)
         db.commit()
         db.refresh(new_problem)
 
@@ -52,14 +52,11 @@ def create_problem_in_db(db: Session, problem: ProblemCreate):
 async def create_testcases_in_db(
     db: AsyncSession, problem_id: uuid.UUID, testcases: List[Dict[str, str]]
 ) -> TestCaseResponse:
-    """Створює тестові випадки для проблеми і завантажує їх у DigitalOcean Spaces."""
     try:
-        # Перевіряємо, чи існує проблема
         problem = await db.get(Problem, problem_id)
         if not problem:
             raise ResourceNotFoundException(detail=f"Проблему {problem_id} не знайдено")
 
-        # Створюємо тестові випадки в DigitalOcean Spaces
         testcase_ids = []
         for idx, tc in enumerate(testcases, 1):
             testcase_id = uuid.uuid4()
