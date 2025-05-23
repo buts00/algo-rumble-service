@@ -27,7 +27,7 @@ def get_s3_client():
 async def upload_problem_to_s3(problem_id: str, problem_data: Dict[str, Any]) -> str:
     s3_client = get_s3_client()
     try:
-        s3_logger.debug(f"Serializing problem data: {problem_data}")
+        s3_logger.debug(f"Problem data type: {type(problem_data)}, data: {problem_data}")
         problem_json = json.dumps(problem_data)
         bucket_name = AppConfig.AWS_BUCKET_NAME
         file_path = f"problems/{problem_id}.json"

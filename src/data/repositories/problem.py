@@ -35,17 +35,18 @@ async def create_problem_in_db(db: AsyncSession, problem: ProblemCreate):
         db.add(new_problem)
         await db.commit()
         await db.refresh(new_problem)
-        await upload_problem_to_s3(str(new_problem.id), problem.problem)
+        await upload_problem_to_s3(str(new_problem.id), problem.problem.dict())
         return new_problem
     except Exception as e:
+        problem_logger.error(f"Error in create_problem_in_db: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=500,
-            detail=ProblemDetail(
-                type="error",
-                title="Failed to create problem",
-                status=500,
-                detail=str(e)
-            ).dict()
+            detail={
+                "type": "error",
+                "title": "Failed to create problem",
+                "status": 500,
+                "detail": str(e)
+            }
         )
 
 async def create_testcases_in_db(
