@@ -120,7 +120,7 @@ async def update_user_ratings(
     user1_id: UUID4,
     user2_id: UUID4,
     user1_rating: int,
-    user2_rating: int
+    user2_rating: int,
 ) -> None:
     """Update ratings for two users in the database."""
     await db.execute(

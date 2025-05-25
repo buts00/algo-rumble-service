@@ -48,5 +48,6 @@ class UserService:
         await session.execute(stmt)
         await session.commit()
 
+
 def get_user_service(session: AsyncSession = Depends(get_session)) -> UserService:
     return UserService()

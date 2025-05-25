@@ -7,7 +7,7 @@ from typing import Dict, List, Optional, Any
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.config import logger, Config
+from src.config import logger
 from src.data.repositories.match_repository import (
     get_match_by_id,
     finish_match_with_winner,
@@ -19,7 +19,8 @@ from src.errors import (
     AuthorizationException,
     BadRequestException,
     ResourceNotFoundException,
-    ValidationException, DatabaseException,
+    ValidationException,
+    DatabaseException,
 )
 from src.presentation.websocket import manager
 
@@ -300,7 +301,9 @@ async def cancel_expired_matches(db: AsyncSession) -> None:
         match_logger.error(f"Error cancelling expired matches: {str(e)}")
 
 
-async def capitulate_match_logic(db: AsyncSession, match_id: uuid.UUID, loser_id: uuid.UUID):
+async def capitulate_match_logic(
+    db: AsyncSession, match_id: uuid.UUID, loser_id: uuid.UUID
+):
     from src.business.services.match_rating import RatingService
     from src.presentation.routes.submission import submission_logger
 
@@ -328,7 +331,7 @@ async def capitulate_match_logic(db: AsyncSession, match_id: uuid.UUID, loser_id
     if not winner or not loser:
         raise ResourceNotFoundException("Could not load player data")
 
-    await RatingService.update_ratings_after_match(db, winner.id, loser.id)
+    await RatingService.update_ratings_after_match(db, winner.id, loser.id, match.id)
 
     await manager.send_match_notification(
         str(winner.id),
@@ -383,7 +386,9 @@ async def send_accept_status(match: Match, db: AsyncSession):
     await send_match_notification(str(match.player2_id), data)
 
 
-async def accept_match_service(db: AsyncSession, match_id: str, user_id: str) -> Dict[str, Any]:
+async def accept_match_service(
+    db: AsyncSession, match_id: str, user_id: str
+) -> Dict[str, Any]:
     """
     Handle the logic for accepting a match invitation.
 
@@ -409,7 +414,9 @@ async def accept_match_service(db: AsyncSession, match_id: str, user_id: str) ->
         # Check if match exists
         match = await get_match_by_id(db, match_uuid)
         if not match:
-            match_logger.warning(f"Match acceptance failed: Match not found: {match_id}")
+            match_logger.warning(
+                f"Match acceptance failed: Match not found: {match_id}"
+            )
             raise ResourceNotFoundException(detail="Match not found")
 
         # Check if user is part of the match
@@ -429,19 +436,25 @@ async def accept_match_service(db: AsyncSession, match_id: str, user_id: str) ->
         # Update acceptance status
         if match.player1_id == user_uuid:
             if match.player1_accepted:
-                match_logger.warning(f"Match acceptance failed: User {user_id} already accepted match {match_id}")
+                match_logger.warning(
+                    f"Match acceptance failed: User {user_id} already accepted match {match_id}"
+                )
                 raise ValidationException(detail="You have already accepted this match")
             match.player1_accepted = True
         else:
             if match.player2_accepted:
-                match_logger.warning(f"Match acceptance failed: User {user_id} already accepted match {match_id}")
+                match_logger.warning(
+                    f"Match acceptance failed: User {user_id} already accepted match {match_id}"
+                )
                 raise ValidationException(detail="You have already accepted this match")
             match.player2_accepted = True
 
         # Check if both players have accepted
         if match.player1_accepted and match.player2_accepted:
             match.status = MatchStatus.ACTIVE
-            match_logger.info(f"Match {match_id} is now ACTIVE as both players accepted")
+            match_logger.info(
+                f"Match {match_id} is now ACTIVE as both players accepted"
+            )
 
         db.add(match)
         await db.commit()
@@ -458,7 +471,9 @@ async def accept_match_service(db: AsyncSession, match_id: str, user_id: str) ->
             "player1_accepted": match.player1_accepted,
             "player2_accepted": match.player2_accepted,
         }
-        match_logger.info(f"Match acceptance completed: user={user_id}, match={match_id}")
+        match_logger.info(
+            f"Match acceptance completed: user={user_id}, match={match_id}"
+        )
         return response
 
     except Exception as e:
