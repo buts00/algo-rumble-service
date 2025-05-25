@@ -14,6 +14,7 @@ from src.presentation.routes import (
     testcase_router,
     submission_router,
     profile_router,
+    standing_router,
 )
 from src.config import logger
 from src.data.repositories import get_redis_client, init_db
@@ -108,5 +109,6 @@ app.include_router(problem_router, prefix=f"/api/{version}", tags=["problem"])
 app.include_router(testcase_router, prefix=f"/api/{version}", tags=["testcase"])
 app.include_router(submission_router, prefix=f"/api/{version}", tags=["submission"])
 app.include_router(profile_router, prefix=f"/api/{version}", tags=["profile"])
+app.include_router(standing_router, prefix=f"/api/{version}", tags=["standing"])
 
 logger.info(f"Application startup complete - API version: {version}")

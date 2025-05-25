@@ -19,6 +19,7 @@ from .problem import (
     ProblemDetail,
     ProblemSelectionParams,
 )
+from .profile import MatchHistoryEntry
 from .user import User
 from .testcase import TestCase, TestCaseCreate, TestCaseResponse
 from .submission import SubmissionCreate
@@ -45,6 +46,7 @@ __all__ = [
     "UserLoginModel",
     "UserBaseResponse",
     "UserResponseModel",
+    "MatchHistoryEntry",
     "MatchBase",
     "MatchCreate",
     "MatchResponse",
