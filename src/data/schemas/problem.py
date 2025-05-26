@@ -1,10 +1,10 @@
 from datetime import datetime
 from typing import List, Optional
-from pydantic import UUID4, BaseModel
+from pydantic import UUID4
 from sqlalchemy import ARRAY, Column, String
-from sqlalchemy.dialects.postgresql import UUID as SA_UUID
-from sqlmodel import Field, SQLModel
+from sqlmodel import Field
 from src.data.schemas.base import BaseModel
+
 
 class Problem(BaseModel, table=True):
     """
@@ -19,10 +19,12 @@ class Problem(BaseModel, table=True):
     topics: List[str] = Field(sa_column=Column(ARRAY(String), nullable=False))
     bucket_path: str = Field(sa_column=Column(String, nullable=True))
 
+
 class ProblemExample(BaseModel):
     input: str
     output: str
     explanation: Optional[str] = None
+
 
 class ProblemDetail(BaseModel):
     name: str
@@ -35,17 +37,21 @@ class ProblemDetail(BaseModel):
     constraints: List[str]
     note: Optional[str] = None
 
+
 class ProblemBase(BaseModel):
     rating: int
     topics: List[str]
 
+
 class ProblemCreate(ProblemBase):
     problem: ProblemDetail
+
 
 class ProblemUpdate(BaseModel):
     rating: Optional[int] = None
     topics: Optional[List[str]] = None
     problem: Optional[ProblemDetail] = None
+
 
 class ProblemResponse(ProblemBase):
     id: UUID4
@@ -53,6 +59,7 @@ class ProblemResponse(ProblemBase):
     updated_at: datetime
     problem: Optional[ProblemDetail] = None
     model_config = {"from_attributes": True}
+
 
 class ProblemSelectionParams(BaseModel):
     player1_rating: int

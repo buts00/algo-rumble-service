@@ -1,7 +1,7 @@
 from sqlalchemy import Column, String, INTEGER
-from sqlmodel import Field, SQLModel
-from pydantic import UUID4
+from sqlmodel import Field
 from src.data.schemas.base import BaseModel
+
 
 class User(BaseModel, table=True):
     """Database model for a user."""

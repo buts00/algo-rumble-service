@@ -1,17 +1,23 @@
+import uuid
 from datetime import datetime
 
-from pydantic import UUID4
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.business.services.match_rating import RatingService
 from src.config import logger
-from src.data.repositories.submission import (check_solution, fetch_test_cases,
-                                              get_match_by_id,
-                                              get_problem_by_id,
-                                              get_users_by_ids)
+from src.data.repositories.submission import (
+    check_solution,
+    fetch_test_cases,
+    get_match_by_id,
+    get_problem_by_id,
+    get_users_by_ids,
+)
 from src.data.schemas.match import MatchStatus
-from src.errors import (AuthorizationException, BadRequestException,
-                        ResourceNotFoundException)
+from src.errors import (
+    AuthorizationException,
+    BadRequestException,
+    ResourceNotFoundException,
+)
 from src.presentation.websocket import manager
 
 # Create a module-specific logger
@@ -46,8 +52,8 @@ class SubmissionService:
 
         try:
             try:
-                user_uuid = UUID4(user_id)
-                match_uuid = UUID4(match_id)
+                user_uuid = uuid.UUID(user_id)
+                match_uuid = uuid.UUID(match_id)
             except ValueError:
                 submission_logger.warning(
                     f"Solution submission failed: Invalid user ID format: {user_id}"
@@ -122,7 +128,9 @@ class SubmissionService:
                 old_winner_rating = winner.rating
                 old_loser_rating = loser.rating
 
-                await RatingService.update_ratings_after_match(db, winner.id, loser.id)
+                await RatingService.update_ratings_after_match(
+                    db, winner.id, loser.id, match.id
+                )
                 await db.commit()
 
                 submission_logger.info(

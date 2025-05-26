@@ -15,14 +15,13 @@ from .problem import (
     Problem,
     ProblemCreate,
     ProblemResponse,
-    ProblemBase,
     ProblemUpdate,
     ProblemDetail,
-    ProblemExample,
     ProblemSelectionParams,
 )
+from .profile import MatchHistoryEntry
 from .user import User
-from .testcase import TestCase, TestCaseInput, TestCaseCreate, TestCaseResponse
+from .testcase import TestCase, TestCaseCreate, TestCaseResponse
 from .submission import SubmissionCreate
 from .auth import (
     UserBase,
@@ -47,6 +46,7 @@ __all__ = [
     "UserLoginModel",
     "UserBaseResponse",
     "UserResponseModel",
+    "MatchHistoryEntry",
     "MatchBase",
     "MatchCreate",
     "MatchResponse",
@@ -61,5 +61,5 @@ __all__ = [
     "TestCase",
     "SubmissionCreate",
     "CapitulateRequest",
-    "ProblemDetail"
+    "ProblemDetail",
 ]

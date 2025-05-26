@@ -1,30 +1,19 @@
 import json
 import uuid
 from typing import List, Dict, Any
-
 from sqlalchemy import select, delete, update
 from sqlalchemy.ext.asyncio import AsyncSession
-
 from src.config import logger
 from src.data.repositories.s3 import upload_testcase_to_s3
-
 from src.data.schemas.testcase import TestCaseResponse
 from src.errors import DatabaseException, ResourceNotFoundException
+from fastapi import HTTPException
+from src.data.schemas import Problem, ProblemCreate, ProblemResponse
+from datetime import datetime
+from src.data.repositories.s3 import upload_problem_to_s3
 
 problem_logger = logger.getChild("problem_repository")
 
-from src.data.schemas import Problem, ProblemCreate, ProblemResponse, ProblemDetail
-from sqlalchemy.orm import Session
-import uuid
-from datetime import datetime
-from src.data.repositories.s3 import upload_problem_to_s3
-from fastapi import HTTPException
-
-
-from sqlalchemy.ext.asyncio import AsyncSession
-
-import uuid
-from datetime import datetime
 
 async def create_problem_in_db(db: AsyncSession, problem: ProblemCreate):
     try:
@@ -40,6 +29,7 @@ async def create_problem_in_db(db: AsyncSession, problem: ProblemCreate):
         await db.refresh(new_problem)
         # Явно серіалізуємо ProblemDetail
         problem_data = problem.problem.dict()
+
         # Перетворюємо datetime і UUID у рядки
         def convert_to_json_serializable(data):
             if isinstance(data, dict):
@@ -51,6 +41,7 @@ async def create_problem_in_db(db: AsyncSession, problem: ProblemCreate):
             elif isinstance(data, datetime):
                 return data.isoformat()  # Перетворюємо datetime у ISO формат
             return data
+
         problem_data = convert_to_json_serializable(problem_data)
         await upload_problem_to_s3(str(new_problem.id), problem_data)
         return new_problem
@@ -62,9 +53,10 @@ async def create_problem_in_db(db: AsyncSession, problem: ProblemCreate):
                 "type": "error",
                 "title": "Failed to create problem",
                 "status": 500,
-                "detail": str(e)
-            }
+                "detail": str(e),
+            },
         )
+
 
 async def create_testcases_in_db(
     db: AsyncSession, problem_id: uuid.UUID, testcases: List[Dict[str, str]]
@@ -89,7 +81,7 @@ async def create_testcases_in_db(
             problem_id=problem_id,
             testcase_count=len(testcases),
             success=True,
-            message="Test cases created successfully"
+            message="Test cases created successfully",
         )
     except ResourceNotFoundException:
         raise

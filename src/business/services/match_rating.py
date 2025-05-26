@@ -1,4 +1,5 @@
 import logging
+import uuid
 from typing import Tuple, Union
 from pydantic import UUID4
 
@@ -25,7 +26,7 @@ class RatingService:
 
     @staticmethod
     def calculate_new_rating(
-            current_rating: int, expected_score: float, actual_score: float
+        current_rating: int, expected_score: float, actual_score: float
     ) -> int:
         """
         Calculate the new rating for a player after a match.
@@ -35,14 +36,15 @@ class RatingService:
 
     @staticmethod
     async def update_ratings(
-            db: AsyncSession,
-            player1_id: Union[UUID4, str],
-            player2_id: Union[UUID4, str],
-            player1_actual_score: float,
-            player2_actual_score: float,
-            log_context: str,
-            player1_label: str,
-            player2_label: str
+        db: AsyncSession,
+        player1_id: Union[UUID4, str],
+        player2_id: Union[UUID4, str],
+        player1_actual_score: float,
+        player2_actual_score: float,
+        log_context: str,
+        player1_label: str,
+        player2_label: str,
+        match_id: Union[UUID4, str] = None,
     ) -> Tuple[int, int]:
         """
         Update ratings for two players based on their actual scores.
@@ -56,6 +58,7 @@ class RatingService:
 
         Returns:
             Tuple of new ratings for player1 and player2.
+            :param match_id:
             :param player2_label:
             :param player1_label:
             :param player2_actual_score:
@@ -78,6 +81,9 @@ class RatingService:
             player2.rating, player1.rating
         )
 
+        old_player1_rating = player1.rating
+        old_player2_rating = player2.rating
+
         new_player1_rating = RatingService.calculate_new_rating(
             player1.rating, player1_expected, player1_actual_score
         )
@@ -89,6 +95,19 @@ class RatingService:
             db, player1.id, player2.id, new_player1_rating, new_player2_rating
         )
 
+        # Update match with rating information if match_id is provided
+        if match_id:
+            from src.data.repositories.match_repository import update_match
+
+            # Update match with old and new ratings
+            update_data = {
+                "player1_old_rating": old_player1_rating,
+                "player2_old_rating": old_player2_rating,
+                "player1_new_rating": new_player1_rating,
+                "player2_new_rating": new_player2_rating,
+            }
+            await update_match(db, match_id, update_data)
+
         logger.info(
             f"Updated ratings after {log_context}: "
             f"{player1_label} {player1_id_str} ({player1.rating} → {new_player1_rating}), "
@@ -99,7 +118,10 @@ class RatingService:
 
     @staticmethod
     async def update_ratings_after_match(
-            db: AsyncSession, winner_id: Union[UUID4, str], loser_id: Union[UUID4, str]
+        db: AsyncSession,
+        winner_id: Union[UUID4, str],
+        loser_id: Union[UUID4, str],
+        match_id: Union[UUID4, str] = None,
     ) -> Tuple[int, int]:
         """
         Update ratings after a match using the Elo rating system.
@@ -112,12 +134,16 @@ class RatingService:
             player2_actual_score=0.0,
             log_context="match",
             player1_label="Winner",
-            player2_label="Loser"
+            player2_label="Loser",
+            match_id=match_id,
         )
 
     @staticmethod
     async def update_ratings_for_draw(
-            db: AsyncSession, player1_id: Union[UUID4, str], player2_id: Union[UUID4, str]
+        db: AsyncSession,
+        player1_id: Union[UUID4, str],
+        player2_id: Union[UUID4, str],
+        match_id: Union[UUID4, str] = None,
     ) -> Tuple[int, int]:
         """
         Update ratings after a draw using the Elo rating system.
@@ -130,20 +156,25 @@ class RatingService:
             player2_actual_score=0.5,
             log_context="draw",
             player1_label="Player1",
-            player2_label="Player2"
+            player2_label="Player2",
+            match_id=match_id,
         )
 
     @staticmethod
     async def fetch_players_and_validate(
-            db: AsyncSession, player1_id: UUID4, player2_id: UUID4
+        db: AsyncSession, player1_id: UUID4, player2_id: UUID4
     ) -> Tuple[User | None, User | None, str, str]:
         """
         Fetch players from the database and validate their existence.
         """
         from src.data.repositories.user_repository import get_user_by_id
 
-        player1_id_uuid = UUID4(player1_id) if isinstance(player1_id, str) else player1_id
-        player2_id_uuid = UUID4(player2_id) if isinstance(player2_id, str) else player2_id
+        player1_id_uuid = (
+            uuid.UUID(player1_id) if isinstance(player1_id, str) else player1_id
+        )
+        player2_id_uuid = (
+            uuid.UUID(player2_id) if isinstance(player2_id, str) else player2_id
+        )
         player1_id_str = str(player1_id_uuid)
         player2_id_str = str(player2_id_uuid)
 

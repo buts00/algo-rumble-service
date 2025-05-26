@@ -51,7 +51,7 @@ class MockRedis:
     async def zrange(self, name: str, start: int, end: int) -> List[str]:
         if name not in self.sorted_sets:
             return []
-        return [item[0] for item in self.sorted_sets[name][start:end + 1]]
+        return [item[0] for item in self.sorted_sets[name][start : end + 1]]
 
     async def zrem(self, name: str, value: str) -> int:
         if name not in self.sorted_sets:
@@ -163,7 +163,9 @@ class RedisClient:
         if not self._connected:
             await self.connect()
         try:
-            await self.redis.setex(name=f"jti:{jti}", time=self.JTI_EXPIRY, value="revoked")
+            await self.redis.setex(
+                name=f"jti:{jti}", time=self.JTI_EXPIRY, value="revoked"
+            )
         except Exception as e:
             raise HTTPException(
                 status_code=500, detail=f"Redis operation failed: {str(e)}"

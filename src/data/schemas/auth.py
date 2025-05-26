@@ -2,7 +2,6 @@ from pydantic import BaseModel, Field, field_validator
 from pydantic import UUID4
 
 
-
 class UserBase(BaseModel):
     """Base schema for user data."""
 

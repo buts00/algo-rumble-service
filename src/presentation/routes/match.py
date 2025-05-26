@@ -27,7 +27,6 @@ from src.errors import (
 )
 
 from src.data.schemas import AcceptMatchRequest, FindMatchRequest, Match, MatchStatus
-from src.business.services.match_rating import RatingService
 from src.business.services.match import (
     add_player_to_queue,
     process_match_queue,
@@ -35,7 +34,6 @@ from src.business.services.match import (
     capitulate_match_logic,
     remove_player_from_queue,
     accept_match_service,
-    send_accept_status,  # Імпортуємо з services/match.py
 )
 from src.business.services.auth_dependency import get_current_user
 from src.presentation.websocket import manager
@@ -429,299 +427,6 @@ async def get_active_match(
         raise DatabaseException(detail="An unexpected error occurred")
 
 
-@router.get("/history/{user_id}")
-async def get_match_history(
-    user_id: str,
-    limit: int = 10,
-    offset: int = 0,
-    db: AsyncSession = Depends(get_session),
-    request: Request = None,
-):
-    """
-    Get the match history for a user.
-    """
-    match_logger.info(f"Match history request for user ID: {user_id}")
-
-    try:
-        # Convert user_id to UUID
-        try:
-            user_uuid = uuid.UUID(user_id)
-        except ValueError:
-            match_logger.warning(
-                f"Match history request failed: Invalid user ID format: {user_id}"
-            )
-            raise BadRequestException(detail="Invalid user ID format")
-
-        # Check if user exists
-        result = await db.execute(select(User).where(User.id == user_uuid))
-        user = result.scalar_one_or_none()
-        if not user:
-            match_logger.warning(
-                f"Match history request failed: User not found: {user_id}"
-            )
-            raise ResourceNotFoundException(detail="User not found")
-
-        # Find completed matches
-        result = await db.execute(
-            select(Match)
-            .where(
-                or_(
-                    Match.player1_id == user_uuid,
-                    Match.player2_id == user_uuid,
-                ),
-                Match.status == MatchStatus.COMPLETED,
-            )
-            .order_by(Match.end_time.desc())
-            .offset(offset)
-            .limit(limit)
-        )
-        completed_matches = result.scalars().all()
-
-        # Count total matches
-        result = await db.execute(
-            select(Match).where(
-                or_(
-                    Match.player1_id == user_uuid,
-                    Match.player2_id == user_uuid,
-                ),
-                Match.status == MatchStatus.COMPLETED,
-            )
-        )
-        total_matches = result.scalars().all()
-
-        # Format response
-        match_history = []
-        for match in completed_matches:
-            # Get opponent details
-            opponent_id = (
-                match.player2_id if match.player1_id == user_uuid else match.player1_id
-            )
-            result = await db.execute(select(User).where(User.id == opponent_id))
-            opponent = result.scalar_one_or_none()
-
-            # Determine if user won
-            won = match.winner_id == user_uuid if match.winner_id else False
-
-            match_history.append(
-                {
-                    "match_id": str(match.id),
-                    "opponent": {
-                        "id": str(opponent.id) if opponent else "",
-                        "username": opponent.username if opponent else "",
-                        "rating": opponent.rating if opponent else 0,
-                    },
-                    "problem_id": str(match.problem_id) if match.problem_id else None,
-                    "start_time": match.start_time,
-                    "end_time": match.end_time,
-                    "won": won,
-                }
-            )
-
-        match_logger.info(
-            f"Match history retrieved for user: {user_id}, found {len(match_history)} matches"
-        )
-        return {
-            "matches": match_history,
-            "total": len(total_matches),
-            "limit": limit,
-            "offset": offset,
-        }
-    except (BadRequestException, ResourceNotFoundException, DatabaseException) as e:
-        raise e
-    except Exception as e:
-        match_logger.error(f"Unexpected error during match history request: {str(e)}")
-        raise DatabaseException(detail="An unexpected error occurred")
-
-
-@router.get("/details/{match_id}")
-async def get_match_details(
-    match_id: str, db: AsyncSession = Depends(get_session), request: Request = None
-):
-    """
-    Get detailed information about a specific match.
-    """
-    match_logger.info(f"Match details request for match ID: {match_id}")
-
-    try:
-        # Convert match_id to UUID
-        try:
-            match_uuid = uuid.UUID(match_id)
-        except ValueError:
-            match_logger.warning(
-                f"Match details request failed: Invalid match ID format: {match_id}"
-            )
-            raise BadRequestException(detail="Invalid match ID format")
-
-        # Check if match exists
-        result = await db.execute(select(Match).where(Match.id == match_uuid))
-        match = result.scalars().first()
-        if not match:
-            match_logger.warning(
-                f"Match details request failed: Match not found: {match_id}"
-            )
-            raise ResourceNotFoundException(detail="Match not found")
-
-        # Get player details
-        result = await db.execute(select(User).where(User.id == match.player1_id))
-        player1 = result.scalar_one_or_none()
-        result = await db.execute(select(User).where(User.id == match.player2_id))
-        player2 = result.scalar_one_or_none()
-
-        match_details = {
-            "match_id": str(match.id),
-            "status": match.status,
-            "player1": {
-                "id": str(player1.id) if player1 else "",
-                "username": player1.username if player1 else "",
-                "rating": player1.rating if player1 else 0,
-                "accepted": match.player1_accepted,
-            },
-            "player2": {
-                "id": str(player2.id) if player2 else "",
-                "username": player2.username if player2 else "",
-                "rating": player2.rating if player2 else 0,
-                "accepted": match.player2_accepted,
-            },
-            "problem_id": str(match.problem_id) if match.problem_id else None,
-            "start_time": match.start_time,
-            "end_time": match.end_time,
-            "winner_id": str(match.winner_id) if match.winner_id else None,
-        }
-
-        match_logger.info(f"Match details retrieved for match: {match_id}")
-        return match_details
-    except (BadRequestException, ResourceNotFoundException, DatabaseException) as e:
-        raise e
-    except Exception as e:
-        match_logger.error(f"Unexpected error during match details request: {str(e)}")
-        raise DatabaseException(detail="An unexpected error occurred")
-
-
-@router.post("/complete/{match_id}")
-async def complete_match(
-    match_id: str,
-    winner_id: str,
-    db: AsyncSession = Depends(get_session),
-    request: Request = None,
-):
-    """
-    Complete a match and declare a winner.
-    This endpoint would typically be called by a judge service.
-    """
-    match_logger.info(
-        f"Match completion request for match ID: {match_id}, winner ID: {winner_id}"
-    )
-
-    try:
-        # Convert IDs to UUID
-        try:
-            match_uuid = uuid.UUID(match_id)
-            winner_uuid = uuid.UUID(winner_id)
-        except ValueError:
-            match_logger.warning(
-                f"Match completion failed: Invalid ID format: match={match_id}, winner={winner_id}"
-            )
-            raise BadRequestException(detail="Invalid ID format")
-
-        # Check if match exists
-        result = await db.execute(select(Match).where(Match.id == match_uuid))
-        match = result.scalars().first()
-        if not match:
-            match_logger.warning(
-                f"Match completion failed: Match not found: {match_id}"
-            )
-            raise ResourceNotFoundException(detail="Match not found")
-
-        # Check if winner is part of the match
-        if match.player1_id != winner_uuid and match.player2_id != winner_uuid:
-            match_logger.warning(
-                f"Match completion failed: Winner not part of match: winner={winner_id}, match={match_id}"
-            )
-            raise ValidationException(detail="Winner is not part of this match")
-
-        # Check if match is in the correct state
-        if match.status != MatchStatus.ACTIVE:
-            match_logger.warning(
-                f"Match completion failed: Match not in ACTIVE state: {match_id}, current state: {match.status}"
-            )
-            raise ValidationException(detail="Match is not in an active state")
-
-        # Update match status
-        match.status = MatchStatus.COMPLETED
-        match.winner_id = winner_uuid
-        match.end_time = datetime.utcnow()
-        match_logger.info(
-            f"Match completed: {match_id}, winner: {winner_id}, duration: {match.end_time - match.start_time}"
-        )
-
-        # Update player ratings
-        result = await db.execute(select(User).where(User.id == match.player1_id))
-        player1 = result.scalar_one_or_none()
-        result = await db.execute(select(User).where(User.id == match.player2_id))
-        player2 = result.scalar_one_or_none()
-
-        if player1 and player2:
-            await RatingService.update_ratings_after_match(db, winner_uuid, match.player1_id if match.player2_id == winner_uuid else match.player2_id)
-
-            match_logger.info(
-                f"Ratings updated: player1={player1.username} ({player1.rating}), player2={player2.username} ({player2.rating})"
-            )
-
-            db.add(player1)
-            db.add(player2)
-
-        # Notify both players
-        await send_match_notification(
-            str(match.player1_id),
-            {
-                "status": "match_completed",
-                "match_id": str(match.id),
-                "winner_id": str(match.winner_id),
-                "new_rating": player1.rating if player1 else 0,
-            },
-        )
-
-        await send_match_notification(
-            str(match.player2_id),
-            {
-                "status": "match_completed",
-                "match_id": str(match.id),
-                "winner_id": str(match.winner_id),
-                "new_rating": player2.rating if player2 else 0,
-            },
-        )
-
-        # Commit changes
-        db.add(match)
-        await db.commit()
-        match_logger.info(
-            f"Match completion processed successfully: match={match_id}, winner={winner_id}"
-        )
-
-        return {
-            "status": "completed",
-            "match_id": str(match.id),
-            "winner_id": str(match.winner_id),
-            "player1_rating": player1.rating if player1 else 0,
-            "player2_rating": player2.rating if player2 else 0,
-        }
-    except (
-        BadRequestException,
-        ResourceNotFoundException,
-        ValidationException,
-        DatabaseException,
-    ) as e:
-        raise e
-    except SQLAlchemyError as e:
-        match_logger.error(f"Database error during match completion: {str(e)}")
-        await db.rollback()
-        raise DatabaseException(detail="Database error occurred")
-    except Exception as e:
-        match_logger.error(f"Unexpected error during match completion: {str(e)}")
-        await db.rollback()
-        raise DatabaseException(detail="An unexpected error occurred")
-
-
 @router.websocket("/ws/{user_id}")
 async def websocket_endpoint(websocket: WebSocket, user_id: str):
     """
@@ -774,7 +479,7 @@ async def notify_match_found(match, user_id, opponent_id, db: AsyncSession):
 async def capitulate_match(
     request: CapitulateRequest,
     db: AsyncSession = Depends(get_session),
-    current_user: UserBaseResponse = Depends(get_current_user)
+    current_user: UserBaseResponse = Depends(get_current_user),
 ):
     try:
         await capitulate_match_logic(db, request.match_id, request.loser_id)
@@ -787,7 +492,7 @@ async def capitulate_match(
 @router.post("/cancel_find")
 async def cancel_find_match(
     request_data: FindMatchRequest,
-    current_user: UserBaseResponse = Depends(get_current_user)
+    current_user: UserBaseResponse = Depends(get_current_user),
 ):
     """
     Cancel matchmaking search for a user (remove from queue).
@@ -799,7 +504,7 @@ async def cancel_find_match(
         user_uuid = uuid.UUID(user_id)
     except ValueError:
         match_logger.warning(f"Cancel find failed: Invalid user ID format: {user_id}")
-        raise BadRequestException( detail="Invalid user ID format")
+        raise BadRequestException(detail="Invalid user ID format")
 
     removed = await remove_player_from_queue(user_uuid)
     if removed:

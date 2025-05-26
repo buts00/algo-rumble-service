@@ -24,6 +24,7 @@ class TestCaseCreate(BaseModel):
     problem_id: str
     testcases: List[TestCaseInput]
 
+
 class TestCaseResponse(BaseModel):
     problem_id: UUID4
     testcase_count: int

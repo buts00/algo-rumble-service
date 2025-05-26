@@ -1,8 +1,8 @@
 from fastapi import HTTPException
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
-from starlette.responses import Response
 from src.data.repositories.redis import RedisClient
+
 
 class RateLimitMiddleware(BaseHTTPMiddleware):
     def __init__(self, app, redis_client: RedisClient):
@@ -21,13 +21,15 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             request_count = await self.redis_client.incr(key)
             if request_count == 1:
                 # Set expiry for the key if it's the first request
-                await self.redis_client.set(key, request_count, ex=self.rate_limit_window)
+                await self.redis_client.set(
+                    key, request_count, ex=self.rate_limit_window
+                )
 
             # Check if rate limit is exceeded
             if request_count > self.rate_limit:
                 raise HTTPException(
                     status_code=429,
-                    detail="Rate limit exceeded. Please try again later."
+                    detail="Rate limit exceeded. Please try again later.",
                 )
         except Exception as e:
             # Log error but don't block the request if Redis fails
