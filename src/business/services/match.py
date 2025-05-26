@@ -121,7 +121,7 @@ async def process_match_queue(
             try:
                 # Select a problem for the match
                 problem_id = await select_problem_for_match(
-                    db, player1.rating, player2.rating
+                    db, player1.user_id, player2.user_id, player1.rating, player2.rating
                 )
 
                 # Create match in database
@@ -195,40 +195,34 @@ async def process_match_queue(
 
 
 async def select_problem_for_match(
-    db: AsyncSession, player1_rating: int, player2_rating: int
+    db: AsyncSession, player1_id: uuid.UUID, player2_id: uuid.UUID, player1_rating: int, player2_rating: int
 ) -> Optional[uuid.UUID]:
     """
-    Select a problem for a match based on player ratings.
+    Select a problem for a match based on player ratings and unsolved problems.
 
     Args:
         db: Database session
+        player1_id: ID of player 1
+        player2_id: ID of player 2
         player1_rating: Rating of player 1
         player2_rating: Rating of player 2
 
     Returns:
         The ID of the selected problem, or None if no suitable problem is found
     """
+    from src.data.repositories.match_repository import select_problem_for_match as select_problem_db
+
     try:
-        # Calculate target rating (average of both players)
-        target_rating = (player1_rating + player2_rating) // 2
+        # Call the repository function to select a problem
+        problem_id = await select_problem_db(db, player1_id, player2_id, player1_rating, player2_rating)
 
-        # Find problems with rating close to target
-        result = await db.execute(select(Problem).order_by(Problem.rating))
-        problems = result.scalars().all()
-
-        if not problems:
-            match_logger.warning("No problems found in database")
+        if not problem_id:
+            match_logger.warning("No suitable problem found for match")
             return None
 
-        # Find the problem with the closest rating
-        closest_problem = min(problems, key=lambda p: abs(p.rating - target_rating))
+        match_logger.info(f"Selected problem {problem_id} for match between players {player1_id} and {player2_id}")
+        return problem_id
 
-        match_logger.info(
-            f"Selected problem {closest_problem.id} with rating {closest_problem.rating} "
-            f"for match with target rating {target_rating}"
-        )
-
-        return closest_problem.id
     except Exception as e:
         match_logger.error(f"Error selecting problem: {str(e)}")
         return None
