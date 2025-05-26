@@ -1,312 +1,156 @@
-from fastapi import APIRouter, Depends, Request, Response, status
-from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy.ext.asyncio.session import AsyncSession
-from starlette.responses import JSONResponse
+from fastapi import APIRouter, Depends, Response, status
+from fastapi.responses import JSONResponse
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.config import Config, logger
-from src.data.repositories import get_session
-from src.errors import (
-    AuthenticationException,
-    AuthorizationException,
-    DatabaseException,
-)
-
-from src.data.repositories import get_redis_client, RedisClient
 from src.business.services import (
     AccessTokenFromCookie,
     RefreshTokenFromCookie,
-    get_user_service,
     UserService,
     create_access_token,
     create_refresh_token,
+    get_user_service,
     verify_password,
 )
+from src.config import Config, logger
+from src.data.repositories import RedisClient, get_redis_client, get_session
 from src.data.schemas import UserCreateModel, UserLoginModel, UserResponseModel
+from src.errors import AuthenticationException, AuthorizationException
 
 auth_logger = logger.getChild("auth")
-
-auth_router = APIRouter()
+auth_router = APIRouter(prefix="/auth", tags=["auth"])
 
 
 @auth_router.post(
-    "/register", response_model=UserResponseModel, status_code=status.HTTP_201_CREATED
+    "/register",
+    response_model=UserResponseModel,
+    status_code=status.HTTP_201_CREATED,
+    summary="Register a new user",
+    description="Creates a new user account, generates access and refresh tokens, and sets them as HTTP-only cookies.",
 )
 async def create_user(
-    response: Response,
     user_data: UserCreateModel,
+    response: Response,
     user_service: UserService = Depends(get_user_service),
     session: AsyncSession = Depends(get_session),
-    request: Request = None,
 ):
     auth_logger.info(f"Registration attempt for username: {user_data.username}")
+    user_exists = await user_service.get_user_by_username(user_data.username, session)
+    if user_exists:
+        auth_logger.warning(f"Username already exists: {user_data.username}")
+        raise AuthorizationException(detail="User with this username already exists")
 
-    try:
-        user_exists = await user_service.get_user_by_username(
-            user_data.username, session
-        )
-
-        if user_exists:
-            auth_logger.warning(
-                f"Registration failed: Username already exists: {user_data.username}"
-            )
-            raise AuthorizationException(
-                detail="user with this username already exists"
-            )
-
-        try:
-            new_user = await user_service.create_user(user_data, session)
-            auth_logger.info(
-                f"User created successfully: {new_user.username} (ID: {new_user.id})"
-            )
-        except SQLAlchemyError as db_error:
-            auth_logger.error(f"Database error during user creation: {str(db_error)}")
-            raise DatabaseException(
-                detail="Failed to create user due to database error"
-            )
-        except Exception as e:
-            auth_logger.error(f"Unexpected error during user creation: {str(e)}")
-            raise
-
-        access_token, refresh_token = generate_tokens_for_user(new_user)
-        auth_logger.debug(f"Tokens generated for user: {new_user.username}")
-
-        try:
-            await user_service.update_refresh_token(new_user.id, refresh_token, session)
-            auth_logger.debug(f"Refresh token updated for user: {new_user.username}")
-        except SQLAlchemyError as db_error:
-            auth_logger.error(
-                f"Database error during refresh token update: {str(db_error)}"
-            )
-            raise DatabaseException(
-                detail="Failed to update refresh token due to database error"
-            )
-
-        set_auth_cookies(response, access_token, refresh_token)
-        auth_logger.info(
-            f"User registered successfully: {new_user.username} (ID: {new_user.id})"
-        )
-
-        return new_user
-    except (AuthorizationException, DatabaseException):
-        raise
-    except Exception as e:
-        auth_logger.error(f"Unexpected error during user registration: {str(e)}")
-        raise DatabaseException(
-            detail="An unexpected error occurred during registration"
-        )
+    new_user = await user_service.create_user(user_data, session)
+    access_token, refresh_token = generate_tokens_for_user(new_user)
+    await user_service.update_refresh_token(new_user.id, refresh_token, session)
+    set_auth_cookies(response, access_token, refresh_token)
+    auth_logger.info(f"User registered: {new_user.username} (ID: {new_user.id})")
+    return new_user
 
 
-@auth_router.post("/login", response_model=UserResponseModel)
+@auth_router.post(
+    "/login",
+    response_model=UserResponseModel,
+    summary="Log in a user",
+    description="Authenticates a user, generates access and refresh tokens, and sets them as HTTP-only cookies.",
+)
 async def login(
-    response: Response,
     login_data: UserLoginModel,
+    response: Response,
     user_service: UserService = Depends(get_user_service),
     session: AsyncSession = Depends(get_session),
-    request: Request = None,
 ):
     auth_logger.info(f"Login attempt for username: {login_data.username}")
+    user = await user_service.get_user_by_username(login_data.username, session)
+    if not user or not verify_password(login_data.password, user.password_hash):
+        auth_logger.warning(f"Invalid credentials for username: {login_data.username}")
+        raise AuthenticationException(detail="Invalid credentials")
 
-    try:
-        try:
-            user = await user_service.get_user_by_username(login_data.username, session)
-        except SQLAlchemyError as db_error:
-            auth_logger.error(f"Database error during user lookup: {str(db_error)}")
-            raise DatabaseException(
-                detail="Failed to retrieve user due to database error"
-            )
-
-        if not user:
-            auth_logger.warning(f"Login failed: User not found: {login_data.username}")
-            raise AuthenticationException(detail="Invalid credentials")
-
-        if not verify_password(login_data.password, user.password_hash):
-            auth_logger.warning(
-                f"Login failed: Invalid password for user: {login_data.username}"
-            )
-            raise AuthenticationException(detail="Invalid credentials")
-
-        auth_logger.info(
-            f"User authenticated successfully: {user.username} (ID: {user.id})"
-        )
-
-        access_token, refresh_token = generate_tokens_for_user(user)
-        auth_logger.debug(f"Tokens generated for user: {user.username}")
-
-        try:
-            await user_service.update_refresh_token(user.id, refresh_token, session)
-            auth_logger.debug(f"Refresh token updated for user: {user.username}")
-        except SQLAlchemyError as db_error:
-            auth_logger.error(
-                f"Database error during refresh token update: {str(db_error)}"
-            )
-            raise DatabaseException(
-                detail="Failed to update refresh token due to database error"
-            )
-
-        set_auth_cookies(response, access_token, refresh_token)
-        auth_logger.info(
-            f"User logged in successfully: {user.username} (ID: {user.id})"
-        )
-
-        return user
-    except (AuthenticationException, DatabaseException):
-        # These exceptions will be handled by the global exception handlers
-        raise
-    except Exception as e:
-        auth_logger.error(f"Unexpected error during login: {str(e)}")
-        raise DatabaseException(detail="An unexpected error occurred during login")
+    access_token, refresh_token = generate_tokens_for_user(user)
+    await user_service.update_refresh_token(user.id, refresh_token, session)
+    set_auth_cookies(response, access_token, refresh_token)
+    auth_logger.info(f"User logged in: {user.username} (ID: {user.id})")
+    return user
 
 
-@auth_router.get("/refresh-token")
+@auth_router.get(
+    "/refresh",
+    summary="Refresh JWT tokens",
+    description="Refreshes access and refresh tokens using the refresh token cookie, adding the old token to a Redis blocklist.",
+)
 async def update_tokens(
     response: Response,
     token_details: dict = Depends(RefreshTokenFromCookie()),
     user_service: UserService = Depends(get_user_service),
     redis_client: RedisClient = Depends(get_redis_client),
     session: AsyncSession = Depends(get_session),
-    request: Request = None,
 ):
     user_id = token_details["user"]["id"]
-    username = token_details["user"].get("username", "unknown")
+    auth_logger.info(f"Token refresh attempt for user ID: {user_id}")
+    user = await user_service.get_user_by_id(user_id, session)
+    if not user:
+        auth_logger.warning(f"User not found: ID {user_id}")
+        raise AuthenticationException(detail="Invalid credentials")
 
-    auth_logger.info(
-        f"Token refresh attempt for user ID: {user_id}, username: {username}"
-    )
-
-    try:
-        try:
-            user = await user_service.get_user_by_id(user_id, session)
-        except SQLAlchemyError as db_error:
-            auth_logger.error(f"Database error during user lookup: {str(db_error)}")
-            raise DatabaseException(
-                detail="Failed to retrieve user due to database error"
-            )
-
-        if not user:
-            auth_logger.warning(f"Token refresh failed: User not found: ID {user_id}")
-            raise AuthenticationException(detail="Invalid credentials")
-
-        # Add the old token to the blocklist
-        try:
-            jti = token_details["jti"]
-            redis_client.add_jti_to_blocklist(jti)
-            auth_logger.debug(f"Added token to blocklist: JTI {jti}")
-        except Exception as redis_error:
-            auth_logger.error(
-                f"Redis error during token blocklisting: {str(redis_error)}"
-            )
-            # Continue even if blocklisting fails, as this is not critical
-
-        # Generate new tokens
-        access_token, refresh_token = generate_tokens_for_user(user)
-        auth_logger.debug(f"New tokens generated for user: {user.username}")
-
-        # Update the refresh token in the database
-        try:
-            await user_service.update_refresh_token(user.id, refresh_token, session)
-            auth_logger.debug(f"Refresh token updated for user: {user.username}")
-        except SQLAlchemyError as db_error:
-            auth_logger.error(
-                f"Database error during refresh token update: {str(db_error)}"
-            )
-            raise DatabaseException(
-                detail="Failed to update refresh token due to database error"
-            )
-
-        # Set the new tokens as cookies
-        set_auth_cookies(response, access_token, refresh_token)
-        auth_logger.info(
-            f"Tokens refreshed successfully for user: {user.username} (ID: {user.id})"
-        )
-
-        return {"Okay": "👍"}
-    except (AuthenticationException, DatabaseException):
-        # These exceptions will be handled by the global exception handlers
-        raise
-    except Exception as e:
-        auth_logger.error(f"Unexpected error during token refresh: {str(e)}")
-        raise DatabaseException(
-            detail="An unexpected error occurred during token refresh"
-        )
+    await redis_client.add_jti_to_blocklist(token_details["jti"])
+    access_token, refresh_token = generate_tokens_for_user(user)
+    await user_service.update_refresh_token(user.id, refresh_token, session)
+    set_auth_cookies(response, access_token, refresh_token)
+    auth_logger.info(f"Tokens refreshed for user: {user.username} (ID: {user.id})")
+    return {"message": "Tokens refreshed"}
 
 
-@auth_router.get("/me")
+@auth_router.get(
+    "/me",
+    response_model=UserResponseModel,
+    summary="Get current user",
+    description="Returns the data of the currently authenticated user based on the access token.",
+)
 async def get_current_user(
-    token_data=Depends(AccessTokenFromCookie()), request: Request = None
+    user_service: UserService = Depends(get_user_service),
+    session: AsyncSession = Depends(get_session),
+    token_data: dict = Depends(AccessTokenFromCookie()),
 ):
-    user_id = token_data.get("user", {}).get("id", "unknown")
-    username = token_data.get("user", {}).get("username", "unknown")
+    user_id = token_data["user"]["id"]
+    auth_logger.debug(f"Fetching data for user ID: {user_id}")
+    user = await user_service.get_user_by_id(user_id, session)
+    if not user:
+        auth_logger.warning(f"User not found: ID {user_id}")
+        raise AuthenticationException(detail="User not found")
+    return user
 
-    auth_logger.debug(
-        f"Current user data requested for user ID: {user_id}, username: {username}"
-    )
-    return token_data
 
-
-@auth_router.get("/logout")
+@auth_router.get(
+    "/logout",
+    summary="Log out a user",
+    description="Adds access and refresh tokens to a Redis blocklist and deletes the cookies.",
+    response_model=None,  # Add this
+)
 async def revoke_token(
     response: Response,
     refresh_token_details: dict = Depends(RefreshTokenFromCookie()),
     access_token_details: dict = Depends(AccessTokenFromCookie()),
     redis_client: RedisClient = Depends(get_redis_client),
-    request: Request = None,
 ):
     user_id = refresh_token_details["user"]["id"]
-    username = refresh_token_details["user"].get("username", "unknown")
-
-    auth_logger.info(f"Logout attempt for user ID: {user_id}, username: {username}")
-
-    try:
-        # Add tokens to blocklist
-        try:
-            refresh_jti = refresh_token_details["jti"]
-            access_jti = access_token_details["jti"]
-
-            redis_client.add_jti_to_blocklist(refresh_jti)
-            auth_logger.debug(f"Added refresh token to blocklist: JTI {refresh_jti}")
-
-            redis_client.add_jti_to_blocklist(access_jti)
-            auth_logger.debug(f"Added access token to blocklist: JTI {access_jti}")
-        except Exception as redis_error:
-            auth_logger.error(
-                f"Redis error during token blocklisting: {str(redis_error)}"
-            )
-            # Continue even if blocklisting fails, as we still want to delete the cookies
-
-        # Create a JSONResponse with the logout message
-        response_content = {"message": "logged out successfully"}
-        response = JSONResponse(content=response_content)
-
-        # Delete cookies from the response
-        response.delete_cookie(key="access_token")
-        response.delete_cookie(key="refresh_token")
-
-        auth_logger.info(
-            f"User logged out successfully: ID {user_id}, username: {username}"
-        )
-
-        return response
-    except Exception as e:
-        auth_logger.error(f"Unexpected error during logout: {str(e)}")
-        raise DatabaseException(detail="An unexpected error occurred during logout")
-
-
-def generate_tokens_for_user(user) -> (str, str):
-    access_token = create_access_token(
-        {
-            "id": str(user.id),
-            "username": user.username,
-            "role": user.role,
-        }
+    auth_logger.info(f"Logout attempt for user ID: {user_id}")
+    await redis_client.add_jti_to_blocklist(refresh_token_details["jti"])
+    await redis_client.add_jti_to_blocklist(access_token_details["jti"])
+    response = JSONResponse(content={"message": "Logged out successfully"})
+    response.delete_cookie(
+        key="access_token", httponly=True, secure=True, samesite="strict"
     )
+    response.delete_cookie(
+        key="refresh_token", httponly=True, secure=True, samesite="strict"
+    )
+    auth_logger.info(f"User logged out: ID {user_id}")
+    return response
 
+
+def generate_tokens_for_user(user) -> tuple[str, str]:
+    access_token = create_access_token({"id": str(user.id), "username": user.username})
     refresh_token = create_refresh_token(
-        {
-            "id": str(user.id),
-            "username": user.username,
-        }
+        {"id": str(user.id), "username": user.username}
     )
-
     return access_token, refresh_token
 
 
@@ -317,7 +161,7 @@ def set_auth_cookies(response: Response, access_token: str, refresh_token: str) 
         max_age=Config.JWT_ACCESS_TOKEN_EXPIRY,
         httponly=True,
         secure=True,
-        samesite="strict",
+        samesite="none",
     )
     response.set_cookie(
         key="refresh_token",
@@ -325,5 +169,5 @@ def set_auth_cookies(response: Response, access_token: str, refresh_token: str) 
         max_age=Config.JWT_REFRESH_TOKEN_EXPIRY,
         httponly=True,
         secure=True,
-        samesite="strict",
+        samesite="none",
     )

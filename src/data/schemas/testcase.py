@@ -1,4 +1,4 @@
-import uuid
+from pydantic import UUID4
 from typing import List
 
 from pydantic import BaseModel
@@ -26,9 +26,7 @@ class TestCaseCreate(BaseModel):
 
 
 class TestCaseResponse(BaseModel):
-    """Schema for test case response"""
-
-    problem_id: uuid.UUID
+    problem_id: UUID4
     testcase_count: int
     success: bool
     message: str

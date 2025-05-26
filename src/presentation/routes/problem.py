@@ -1,287 +1,129 @@
-import uuid
-from datetime import datetime
 from typing import List
 
-from fastapi import APIRouter, Depends, Request
-from sqlalchemy import select
-from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy.orm import Session
+from fastapi import APIRouter, Depends
+from pydantic import UUID4
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.config import logger
 from src.data.repositories import get_session
-from src.errors import DatabaseException, ResourceNotFoundException
-from src.data.schemas import Problem
-from src.data.schemas.problem_schemas import (
+from src.data.repositories.problem import (
+    create_problem_in_db,
+    create_testcases_in_db,
+    delete_problem_from_db,
+    get_problem_by_id,
+    update_problem_in_db,
+)
+from src.data.schemas import (
     ProblemCreate,
     ProblemResponse,
     ProblemUpdate,
+    TestCaseCreate,
+    TestCaseResponse,
 )
-from src.data.schemas.problem_schemas import TestCaseCreate, TestCaseResponse
-from src.data.repositories import upload_problem_to_s3, upload_testcase_to_s3
 
-# Create a module-specific logger
 problem_logger = logger.getChild("problem")
-
 problem_router = APIRouter(prefix="/problems", tags=["problems"])
 testcase_router = APIRouter(prefix="/testcases", tags=["testcases"])
 
 
-@testcase_router.post("/", response_model=TestCaseResponse)
+@testcase_router.post(
+    "/",
+    response_model=TestCaseResponse,
+    summary="Create test cases",
+    description="Creates test cases for a problem and uploads them to DigitalOcean Spaces.",
+)
 async def create_testcases(
     testcase_data: TestCaseCreate,
-    db: Session = Depends(get_session),
-    request: Request = None,
+    db: AsyncSession = Depends(get_session),
 ):
-    """
-    Create test cases for a problem and upload them to DigitalOcean Spaces.
-    """
-    problem_id = testcase_data.problem_id
-    problem_logger.info(f"Creating test cases for problem: ID {problem_id}")
-
-    try:
-        # Convert string problem_id to UUID for database query
-        try:
-            uuid_problem_id = uuid.UUID(problem_id)
-        except ValueError:
-            problem_logger.warning(f"Invalid problem ID format: {problem_id}")
-            raise ResourceNotFoundException(detail="Invalid problem ID format")
-
-        # Check if the problem exists
-        result = await db.execute(select(Problem).where(Problem.id == uuid_problem_id))
-        problem = result.scalars().first()
-
-        if not problem:
-            problem_logger.warning(f"Problem not found: ID {problem_id}")
-            raise ResourceNotFoundException(detail="Problem not found")
-
-        # Upload each test case to DigitalOcean Spaces
-        testcase_count = 0
-        for i, testcase in enumerate(testcase_data.testcases, start=1):
-            try:
-                # Upload the test case to S3
-                upload_testcase_to_s3(problem_id, i, testcase.input, testcase.output)
-                testcase_count += 1
-                problem_logger.info(
-                    f"Test case {i} uploaded for problem: ID {problem_id}"
-                )
-            except Exception as s3_error:
-                problem_logger.error(
-                    f"Error uploading test case {i} to S3: {str(s3_error)}"
-                )
-                # Continue with the next test case even if this one fails
-
-        problem_logger.info(
-            f"Created {testcase_count} test cases for problem: ID {problem_id}"
-        )
-        return TestCaseResponse(
-            problem_id=uuid_problem_id,
-            testcase_count=testcase_count,
-            success=True,
-            message=f"Successfully created {testcase_count} test cases",
-        )
-    except ResourceNotFoundException:
-        raise
-    except Exception as e:
-        problem_logger.error(f"Unexpected error creating test cases: {str(e)}")
-        raise DatabaseException(
-            detail="An unexpected error occurred while creating test cases"
-        )
+    """Create test cases for a problem and upload them to DigitalOcean Spaces."""
+    testcases = [
+        {"input": tc.input, "output": tc.output} for tc in testcase_data.testcases
+    ]
+    problem_logger.info(
+        f"Creating {len(testcases)} testcases for problem ID: {testcase_data.problem_id}"
+    )
+    return await create_testcases_in_db(db, testcase_data.problem_id, testcases)
 
 
-@problem_router.post("/", response_model=ProblemResponse)
+@problem_router.post(
+    "/",
+    response_model=ProblemResponse,
+    summary="Create a problem",
+    description="Creates a new problem with metadata and uploads it to DigitalOcean Spaces.",
+)
 async def create_problem(
-    problem: ProblemCreate,
-    db: Session = Depends(get_session),
-    request: Request = None,
+    problem_data: ProblemCreate,
+    db: AsyncSession = Depends(get_session),
 ):
-    """
-    Create a new problem.
-    """
-    problem_logger.info(f"Creating new problem with rating: {problem.rating}")
-
-    try:
-        # Create a new problem instance
-        new_problem = Problem(
-            rating=problem.rating,
-            topics=problem.topics,
-            problem_data=problem.problem.model_dump(),
-        )
-
-        # Add to database to get an ID
-        db.add(new_problem)
-        await db.commit()
-        await db.refresh(new_problem)
-
-        # Upload problem to DigitalOcean Spaces
-        problem_id = str(new_problem.id)
-        problem_data = problem.problem.model_dump()
-
-        try:
-            # Upload the problem to S3
-            bucket_path = upload_problem_to_s3(problem_id, problem_data)
-
-            # Update the problem with the bucket path
-            new_problem.bucket_path = bucket_path
-            await db.commit()
-            await db.refresh(new_problem)
-
-            problem_logger.info(f"Problem uploaded to bucket: {bucket_path}")
-        except Exception as s3_error:
-            problem_logger.error(f"Error uploading problem to S3: {str(s3_error)}")
-            # Continue even if S3 upload fails, as we've already created the problem in the database
-            # In a production environment, you might want to roll back the transaction or implement a retry mechanism
-
-        problem_logger.info(f"Problem created successfully: ID {new_problem.id}")
-        return new_problem
-    except SQLAlchemyError as db_error:
-        problem_logger.error(f"Database error creating problem: {str(db_error)}")
-        raise DatabaseException(detail="Failed to create problem due to database error")
-    except Exception as e:
-        problem_logger.error(f"Unexpected error creating problem: {str(e)}")
-        raise DatabaseException(
-            detail="An unexpected error occurred while creating the problem"
-        )
+    """Create a new problem and store it in DigitalOcean Spaces."""
+    problem_logger.info(f"Creating problem with rating: {problem_data.rating}")
+    return await create_problem_in_db(db, problem_data)
 
 
-@problem_router.post("/get", response_model=ProblemResponse)
+@problem_router.get(
+    "/{problem_id}",
+    response_model=ProblemResponse,
+    summary="Get a problem",
+    description="Retrieves a problem by its ID.",
+)
 async def get_problem(
-    problem_id: uuid.UUID,
-    db: Session = Depends(get_session),
-    request: Request = None,
+    problem_id: UUID4,
+    db: AsyncSession = Depends(get_session),
 ):
-    """
-    Get a problem by ID.
-    """
-    problem_logger.info(f"Getting problem: ID {problem_id}")
-
-    try:
-        result = await db.execute(select(Problem).where(Problem.id == problem_id))
-        problem = result.scalars().first()
-
-        if not problem:
-            problem_logger.warning(f"Problem not found: ID {problem_id}")
-            raise ResourceNotFoundException(detail="Problem not found")
-
-        problem_logger.info(f"Problem retrieved successfully: ID {problem_id}")
-        return problem
-    except ResourceNotFoundException:
-        raise
-    except SQLAlchemyError as db_error:
-        problem_logger.error(f"Database error retrieving problem: {str(db_error)}")
-        raise DatabaseException(
-            detail="Failed to retrieve problem due to database error"
-        )
-    except Exception as e:
-        problem_logger.error(f"Unexpected error retrieving problem: {str(e)}")
-        raise DatabaseException(
-            detail="An unexpected error occurred while retrieving the problem"
-        )
+    """Retrieve a problem by its unique ID."""
+    problem_logger.info(f"Fetching problem ID: {problem_id}")
+    return await get_problem_by_id(db, problem_id)
 
 
-@problem_router.put("/update", response_model=ProblemResponse)
+@problem_router.put(
+    "/{problem_id}",
+    response_model=ProblemResponse,
+    summary="Update a problem",
+    description="Updates a problem's metadata or content.",
+)
 async def update_problem(
-    problem_id: uuid.UUID,
+    problem_id: UUID4,
     problem_update: ProblemUpdate,
-    db: Session = Depends(get_session),
-    request: Request = None,
+    db: AsyncSession = Depends(get_session),
 ):
-    """
-    Update a problem.
-    """
-    problem_logger.info(f"Updating problem: ID {problem_id}")
-
-    try:
-        result = await db.execute(select(Problem).where(Problem.id == problem_id))
-        problem = result.scalars().first()
-
-        if not problem:
-            problem_logger.warning(f"Problem not found: ID {problem_id}")
-            raise ResourceNotFoundException(detail="Problem not found")
-
-        # Update fields if provided
-        update_data = problem_update.model_dump(exclude_unset=True)
-        for key, value in update_data.items():
-            if value is not None:
-                setattr(problem, key, value)
-
-        problem.updated_at = datetime.now()
-
-        await db.commit()
-        await db.refresh(problem)
-
-        problem_logger.info(f"Problem updated successfully: ID {problem_id}")
-        return problem
-    except ResourceNotFoundException:
-        raise
-    except SQLAlchemyError as db_error:
-        problem_logger.error(f"Database error updating problem: {str(db_error)}")
-        raise DatabaseException(detail="Failed to update problem due to database error")
-    except Exception as e:
-        problem_logger.error(f"Unexpected error updating problem: {str(e)}")
-        raise DatabaseException(
-            detail="An unexpected error occurred while updating the problem"
-        )
+    """Update an existing problem with new metadata or content."""
+    update_data = problem_update.model_dump(exclude_unset=True)
+    problem_logger.info(f"Updating problem ID: {problem_id}")
+    return await update_problem_in_db(db, problem_id, update_data)
 
 
-@problem_router.delete("/delete")
+@problem_router.delete(
+    "/{problem_id}",
+    summary="Delete a problem",
+    description="Deletes a problem and its associated data from DigitalOcean Spaces.",
+)
 async def delete_problem(
-    problem_id: uuid.UUID,
-    db: Session = Depends(get_session),
-    request: Request = None,
+    problem_id: UUID4,
+    db: AsyncSession = Depends(get_session),
 ):
-    """
-    Delete a problem.
-    """
-    problem_logger.info(f"Deleting problem: ID {problem_id}")
-
-    try:
-        result = await db.execute(select(Problem).where(Problem.id == problem_id))
-        problem = result.scalars().first()
-
-        if not problem:
-            problem_logger.warning(f"Problem not found: ID {problem_id}")
-            raise ResourceNotFoundException(detail="Problem not found")
-
-        await db.delete(problem)
-        await db.commit()
-
-        problem_logger.info(f"Problem deleted successfully: ID {problem_id}")
-        return {"message": f"Problem {problem_id} deleted successfully"}
-    except ResourceNotFoundException:
-        raise
-    except SQLAlchemyError as db_error:
-        problem_logger.error(f"Database error deleting problem: {str(db_error)}")
-        raise DatabaseException(detail="Failed to delete problem due to database error")
-    except Exception as e:
-        problem_logger.error(f"Unexpected error deleting problem: {str(e)}")
-        raise DatabaseException(
-            detail="An unexpected error occurred while deleting the problem"
-        )
+    """Delete a problem and its associated data."""
+    problem_logger.info(f"Deleting problem ID: {problem_id}")
+    return await delete_problem_from_db(db, problem_id)
 
 
-@problem_router.get("/", response_model=List[ProblemResponse])
+@problem_router.get(
+    "/",
+    response_model=List[ProblemResponse],
+    summary="List problems",
+    description="Lists all problems with pagination.",
+)
 async def list_problems(
     skip: int = 0,
     limit: int = 100,
-    db: Session = Depends(get_session),
-    request: Request = None,
+    db: AsyncSession = Depends(get_session),
 ):
     """
     List all problems with pagination.
+    TODO: Implement list_problems_from_db in src/data/repositories/problem.py.
     """
-    problem_logger.info(f"Listing problems: skip={skip}, limit={limit}")
-
-    try:
-        result = await db.execute(select(Problem).offset(skip).limit(limit))
-        problems = result.scalars().all()
-
-        problem_logger.info(f"Retrieved {len(problems)} problems")
-        return problems
-    except SQLAlchemyError as db_error:
-        problem_logger.error(f"Database error listing problems: {str(db_error)}")
-        raise DatabaseException(detail="Failed to list problems due to database error")
-    except Exception as e:
-        problem_logger.error(f"Unexpected error listing problems: {str(e)}")
-        raise DatabaseException(
-            detail="An unexpected error occurred while listing problems"
-        )
+    problem_logger.info(f"Listing problems with skip: {skip}, limit: {limit}")
+    problem_logger.warning(
+        "list_problems_from_db not implemented, returning empty list"
+    )
+    return []

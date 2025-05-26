@@ -1,10 +1,8 @@
-import uuid
 from datetime import datetime, timedelta
 from typing import Any
-
+import uuid  # Add this import
 import jwt
 from passlib.context import CryptContext
-
 from src.config import Config
 
 passwd_context = CryptContext(schemes=["bcrypt"])
@@ -28,7 +26,7 @@ def create_access_token(
     payload = {
         "user": user_data,
         "exp": datetime.now() + expiry,
-        "jti": str(uuid.uuid4()),
+        "jti": str(uuid.uuid4()),  # Use uuid.uuid4() instead of UUID4()
         "is_refresh": False,
     }
 
@@ -64,6 +62,5 @@ def decode_token(token: str) -> Any | None:
             jwt=token, key=Config.JWT_SECRET, algorithms=[Config.JWT_ALGORITHM]
         )
         return token_data
-
     except jwt.PyJWTError as _:
         return None

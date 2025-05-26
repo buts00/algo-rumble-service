@@ -1,13 +1,11 @@
 import os
 import time
-import uuid
 
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.responses import Response
 
 from src.presentation.routes import (
     auth_router,
@@ -15,6 +13,8 @@ from src.presentation.routes import (
     problem_router,
     testcase_router,
     submission_router,
+    profile_router,
+    standing_router,
 )
 from src.config import logger
 from src.data.repositories import get_redis_client, init_db
@@ -22,24 +22,26 @@ from src.errors import register_exception_handlers
 from src.presentation.middleware.rate_limit import RateLimitMiddleware
 
 
+import uuid
+
+
 class LoggingMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         request_id = str(uuid.uuid4())
         request.state.request_id = request_id
-
+        origin = request.headers.get("origin")
         logger.info(
             f"Request started: {request.method} {request.url.path} - "
-            f"ID: {request_id} - Client: {request.client.host}"
+            f"ID: {request_id} - Client: {request.client.host} - Origin: {origin}"
         )
         start_time = time.time()
-
         try:
             response = await call_next(request)
             process_time = time.time() - start_time
             logger.info(
                 f"Request completed: {request.method} {request.url.path} - "
                 f"ID: {request_id} - Status: {response.status_code} - "
-                f"Time: {process_time:.4f}s"
+                f"Time: {process_time:.4f}s - Response headers: {response.headers}"
             )
             return response
         except Exception as e:
@@ -80,7 +82,10 @@ app = FastAPI(
 # CORS: дозволити будь-який піддомен vercel.app та localhost:3000 для розробки
 app.add_middleware(
     CORSMiddleware,
-    allow_origin_regex=r"^(https:\/\/.*\.vercel\.app|https:\/\/algo-rubmle\.vercel\.app|http:\/\/localhost:3000)$",
+    allow_origins=[
+        "https://algo-rubmle.vercel.app",
+        "http://localhost:3000",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -98,10 +103,12 @@ logger.info("Rate limiting middleware added")
 register_exception_handlers(app)
 
 # Маршрути
-app.include_router(auth_router,       prefix=f"/api/{version}/auth", tags=["auth"])
-app.include_router(match_router,      prefix=f"/api/{version}",      tags=["match"])
-app.include_router(problem_router,    prefix=f"/api/{version}",      tags=["problem"])
-app.include_router(testcase_router,   prefix=f"/api/{version}",      tags=["testcase"])
-app.include_router(submission_router, prefix=f"/api/{version}",      tags=["submission"])
+app.include_router(auth_router, prefix=f"/api/{version}", tags=["auth"])
+app.include_router(match_router, prefix=f"/api/{version}", tags=["match"])
+app.include_router(problem_router, prefix=f"/api/{version}", tags=["problem"])
+app.include_router(testcase_router, prefix=f"/api/{version}", tags=["testcase"])
+app.include_router(submission_router, prefix=f"/api/{version}", tags=["submission"])
+app.include_router(profile_router, prefix=f"/api/{version}", tags=["profile"])
+app.include_router(standing_router, prefix=f"/api/{version}", tags=["standing"])
 
 logger.info(f"Application startup complete - API version: {version}")

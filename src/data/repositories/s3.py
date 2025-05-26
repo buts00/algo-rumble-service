@@ -3,14 +3,16 @@ from typing import Any, Dict
 
 import boto3
 from botocore.client import Config
+from botocore.exceptions import ClientError
 
 from src.config import Config as AppConfig
+from src.config import logger
+
+s3_logger = logger.getChild("s3")
 
 
 def get_s3_client():
-    """
-    Create and return an S3 client configured for DigitalOcean Spaces.
-    """
+    """Create and return a synchronous S3 client for DigitalOcean Spaces."""
     session = boto3.session.Session()
     return session.client(
         "s3",
@@ -22,73 +24,59 @@ def get_s3_client():
     )
 
 
-def upload_problem_to_s3(problem_id: str, problem_data: Dict[str, Any]) -> str:
-    """
-    Upload problem data to DigitalOcean Spaces.
-
-    Args:
-        problem_id: The ID of the problem
-        problem_data: The problem data to upload
-
-    Returns:
-        The path to the uploaded file in the bucket
-    """
+async def upload_problem_to_s3(problem_id: str, problem_data: Dict[str, Any]) -> str:
     s3_client = get_s3_client()
+    try:
+        s3_logger.debug(
+            f"Problem data type: {type(problem_data)}, data: {problem_data}"
+        )
+        problem_json = json.dumps(problem_data)
+        bucket_name = AppConfig.AWS_BUCKET_NAME
+        file_path = f"problems/{problem_id}.json"
+        s3_client.put_object(
+            Bucket=bucket_name,
+            Key=file_path,
+            Body=problem_json,
+            ACL="public-read",
+            ContentType="application/json",
+        )
+        s3_logger.info(f"Uploaded problem {problem_id} to {file_path}")
+        return file_path
+    except ClientError as e:
+        s3_logger.error(f"Error uploading problem {problem_id} to S3: {str(e)}")
+        raise
+    except TypeError as e:
+        s3_logger.error(f"Serialization error for problem {problem_id}: {str(e)}")
+        raise
 
-    # Convert problem data to JSON
-    problem_json = json.dumps(problem_data)
 
-    # Upload to DigitalOcean Spaces
-    bucket_name = AppConfig.AWS_BUCKET_NAME
-    file_path = f"problems/{problem_id}.json"
-
-    s3_client.put_object(
-        Bucket=bucket_name,
-        Key=file_path,
-        Body=problem_json,
-        ACL="public-read",
-        ContentType="application/json",
-    )
-
-    return file_path
-
-
-def upload_testcase_to_s3(
+async def upload_testcase_to_s3(
     problem_id: str, testcase_number: int, input_data: str, output_data: str
 ) -> Dict[str, str]:
-    """
-    Upload testcase input and output to DigitalOcean Spaces.
-
-    Args:
-        problem_id: The ID of the problem
-        testcase_number: The number of the testcase
-        input_data: The input data for the testcase
-        output_data: The expected output for the testcase
-
-    Returns:
-        Dictionary with paths to the uploaded input and output files
-    """
+    """Upload testcase input and output to DigitalOcean Spaces."""
     s3_client = get_s3_client()
     bucket_name = AppConfig.AWS_BUCKET_NAME
-
-    # Upload input file
-    input_path = f"tests/{problem_id}/{testcase_number}.in"
-    s3_client.put_object(
-        Bucket=bucket_name,
-        Key=input_path,
-        Body=input_data,
-        ACL="public-read",
-        ContentType="text/plain",
-    )
-
-    # Upload output file
-    output_path = f"tests/{problem_id}/{testcase_number}.out"
-    s3_client.put_object(
-        Bucket=bucket_name,
-        Key=output_path,
-        Body=output_data,
-        ACL="public-read",
-        ContentType="text/plain",
-    )
-
-    return {"input_path": input_path, "output_path": output_path}
+    try:
+        input_path = f"tests/{problem_id}/{testcase_number}.in"
+        s3_client.put_object(
+            Bucket=bucket_name,
+            Key=input_path,
+            Body=input_data,
+            ACL="public-read",
+            ContentType="text/plain",
+        )
+        output_path = f"tests/{problem_id}/{testcase_number}.out"
+        s3_client.put_object(
+            Bucket=bucket_name,
+            Key=output_path,
+            Body=output_data,
+            ACL="public-read",
+            ContentType="text/plain",
+        )
+        s3_logger.info(f"Uploaded testcase {testcase_number} for problem {problem_id}")
+        return {"input_path": input_path, "output_path": output_path}
+    except ClientError as e:
+        s3_logger.error(
+            f"Error uploading testcase {testcase_number} for problem {problem_id}: {str(e)}"
+        )
+        raise

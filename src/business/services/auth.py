@@ -1,15 +1,17 @@
+from fastapi import Depends
 from pydantic import UUID4
 from sqlmodel import select, update
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from src.data.schemas import User, UserCreateModel, UserRole
 from src.business.services.auth_util import generate_password_hash
+from src.data.repositories import get_session
+from src.data.schemas import User, UserCreateModel
 
 
 class UserService:
     @staticmethod
-    async def get_user_by_id(id: UUID4, session: AsyncSession) -> User | None:
-        result = await session.execute(select(User).where(User.id == id))
+    async def get_user_by_id(user_id: UUID4, session: AsyncSession) -> User | None:
+        result = await session.execute(select(User).where(User.id == user_id))
         return result.scalar_one_or_none()
 
     @staticmethod
@@ -25,7 +27,6 @@ class UserService:
         new_user = User(
             **user_data_dict,
             password_hash=generate_password_hash(password),
-            role=UserRole.USER,
             rating=1000,
         )
 
@@ -46,3 +47,7 @@ class UserService:
         )
         await session.execute(stmt)
         await session.commit()
+
+
+def get_user_service(session: AsyncSession = Depends(get_session)) -> UserService:
+    return UserService()
