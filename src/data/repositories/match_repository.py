@@ -57,18 +57,98 @@ async def finish_match_with_winner(
 
 
 async def select_problem_for_match(
-    db: AsyncSession, player1_rating: int, player2_rating: int
+    db: AsyncSession, player1_id: UUID4, player2_id: UUID4, player1_rating: int, player2_rating: int
 ) -> UUID4 | None:
-    """Select a problem for a match based on player ratings."""
+    """
+    Select a problem for a match based on player ratings and unsolved problems.
+
+    Args:
+        db: Database session
+        player1_id: ID of player 1
+        player2_id: ID of player 2
+        player1_rating: Rating of player 1
+        player2_rating: Rating of player 2
+
+    Returns:
+        The ID of the selected problem, or None if no suitable problem is found
+    """
+    import random
+    from sqlalchemy import and_, not_, or_
+
     try:
+        # Calculate target rating (average of both players)
         target_rating = (player1_rating + player2_rating) // 2
-        result = await db.execute(select(Problem).order_by(Problem.rating))
-        problems = result.scalars().all()
-        if not problems:
-            return None
-        closest_problem = min(problems, key=lambda p: abs(p.rating - target_rating))
+
+        # Get problems that both players have solved (from completed matches)
+        player1_matches = await db.execute(
+            select(Match).where(
+                or_(
+                    Match.player1_id == player1_id,
+                    Match.player2_id == player1_id
+                ),
+                Match.status == MatchStatus.COMPLETED,
+                Match.problem_id.isnot(None)
+            )
+        )
+        player1_problems = {match.problem_id for match in player1_matches.scalars().all()}
+
+        player2_matches = await db.execute(
+            select(Match).where(
+                or_(
+                    Match.player1_id == player2_id,
+                    Match.player2_id == player2_id
+                ),
+                Match.status == MatchStatus.COMPLETED,
+                Match.problem_id.isnot(None)
+            )
+        )
+        player2_problems = {match.problem_id for match in player2_matches.scalars().all()}
+
+        # Combine the sets of solved problems
+        solved_problems = player1_problems.union(player2_problems)
+
+        # Find problems that neither player has solved
+        if solved_problems:
+            result = await db.execute(
+                select(Problem)
+                .where(not_(Problem.id.in_(solved_problems)))
+                .order_by(Problem.rating)
+            )
+            unsolved_problems = result.scalars().all()
+        else:
+            # If no solved problems, get all problems
+            result = await db.execute(select(Problem).order_by(Problem.rating))
+            unsolved_problems = result.scalars().all()
+
+        if not unsolved_problems:
+            # If no unsolved problems, get all problems (fallback)
+            result = await db.execute(select(Problem).order_by(Problem.rating))
+            all_problems = result.scalars().all()
+
+            if not all_problems:
+                return None
+
+            # Select a random problem as fallback
+            return random.choice(all_problems).id
+
+        # Find the problem with the closest rating to the target
+        closest_problem = min(unsolved_problems, key=lambda p: abs(p.rating - target_rating))
         return closest_problem.id
-    except Exception:
+
+    except Exception as e:
+        # Log the error
+        from src.config import logger
+        logger.error(f"Error selecting problem for match: {str(e)}")
+
+        # Fallback: try to get any problem
+        try:
+            result = await db.execute(select(Problem))
+            problems = result.scalars().all()
+            if problems:
+                return random.choice(problems).id
+        except Exception:
+            pass
+
         return None
 
 
