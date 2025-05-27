@@ -83,7 +83,7 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "https://algo-rumble.vercel.app/",
+        "https://algo-rumble.vercel.app",
         "http://localhost:3000",
     ],
     allow_credentials=True,
