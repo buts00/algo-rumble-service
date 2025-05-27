@@ -196,15 +196,11 @@ async def get_user_rating_history(
             raise BadRequestException(detail="User not found")
 
         # Create rating history entries
-        history_entries = []
+        history_entries = [RatingHistoryEntry(
+            date=user.created_at,
+            rating=1000
+        )]
 
-        # Add initial rating entry with the user's creation date and default rating 1000
-        history_entries.append(
-            RatingHistoryEntry(
-                date=user.created_at,
-                rating=1000
-            )
-        )
 
         # Process each match to extract rating changes
         for match in matches:

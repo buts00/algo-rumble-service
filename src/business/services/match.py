@@ -325,7 +325,9 @@ async def capitulate_match_logic(
     if not winner or not loser:
         raise ResourceNotFoundException("Could not load player data")
 
-    await RatingService.update_ratings_after_match(db, winner.id, loser.id, match.id)
+
+
+    await RatingService.update_ratings_after_match(db, winner.id, loser.id, match)
 
     await manager.send_match_notification(
         str(winner.id),

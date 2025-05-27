@@ -482,7 +482,7 @@ async def capitulate_match(
     current_user: UserBaseResponse = Depends(get_current_user),
 ):
     try:
-        await capitulate_match_logic(db, request.match_id, request.loser_id)
+        await capitulate_match_logic(db, request.match_id, current_user.id)
         return {"message": "Match capitulated successfully."}
     except Exception as e:
         match_logger.error(f"Failed to capitulate match: {e}")

@@ -1,10 +1,11 @@
 import logging
 import uuid
-from typing import Tuple, Union
+from typing import Tuple, Union, Optional
 from pydantic import UUID4
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.data.schemas import Match
 from src.data.schemas.user import User
 from src.data.repositories.match_repository import update_user_ratings
 
@@ -26,7 +27,7 @@ class RatingService:
 
     @staticmethod
     def calculate_new_rating(
-        current_rating: int, expected_score: float, actual_score: float
+            current_rating: int, expected_score: float, actual_score: float
     ) -> int:
         """
         Calculate the new rating for a player after a match.
@@ -36,38 +37,20 @@ class RatingService:
 
     @staticmethod
     async def update_ratings(
-        db: AsyncSession,
-        player1_id: Union[UUID4, str],
-        player2_id: Union[UUID4, str],
-        player1_actual_score: float,
-        player2_actual_score: float,
-        log_context: str,
-        player1_label: str,
-        player2_label: str,
-        match_id: Union[UUID4, str] = None,
+            db: AsyncSession,
+            player1_id: Union[UUID4, str],
+            player2_id: Union[UUID4, str],
+            player1_actual_score: float,
+            player2_actual_score: float,
+            log_context: str,
+            player1_label: str,
+            player2_label: str,
+            match: Optional[Match] = None,
     ) -> Tuple[int, int]:
         """
         Update ratings for two players based on their actual scores.
-
-        Args:
-            db: Database session.
-            Player1_id, player2_id: IDs of the players.
-            Player1_actual_score, player2_actual_score: Actual scores (e.g., 1.0/0.0 for win/loss, 0.5/0.5 for draw).
-            log_context: Context for logging (e.g., "match", "draw").
-            Player1_label, player2_label: Labels for players in logs (e.g., "Winner"/"Loser", "Player1"/"Player2").
-
-        Returns:
-            Tuple of new ratings for player1 and player2.
-            :param match_id:
-            :param player2_label:
-            :param player1_label:
-            :param player2_actual_score:
-            :param log_context:
-            :param player1_actual_score:
-            :param player2_id:
-            :param db:
-            :param player1_id:
         """
+
         player1, player2, player1_id_str, player2_id_str = (
             await RatingService.fetch_players_and_validate(db, player1_id, player2_id)
         )
@@ -95,33 +78,40 @@ class RatingService:
             db, player1.id, player2.id, new_player1_rating, new_player2_rating
         )
 
-        # Update match with rating information if match_id is provided
-        if match_id:
+        if match:
             from src.data.repositories.match_repository import update_match
 
-            # Update match with old and new ratings
             update_data = {
-                "player1_old_rating": old_player1_rating,
-                "player2_old_rating": old_player2_rating,
-                "player1_new_rating": new_player1_rating,
-                "player2_new_rating": new_player2_rating,
+                "player1_old_rating": (
+                    old_player1_rating if match.player1_id == player1.id else old_player2_rating
+                ),
+                "player2_old_rating": (
+                    old_player2_rating if match.player2_id == player2.id else old_player1_rating
+                ),
+                "player1_new_rating": (
+                    new_player1_rating if match.player1_id == player1.id else new_player2_rating
+                ),
+                "player2_new_rating": (
+                    new_player2_rating if match.player2_id == player2.id else new_player1_rating
+                ),
             }
-            await update_match(db, match_id, update_data)
+
+            await update_match(db, match.id, update_data)
 
         logger.info(
             f"Updated ratings after {log_context}: "
-            f"{player1_label} {player1_id_str} ({player1.rating} → {new_player1_rating}), "
-            f"{player2_label} {player2_id_str} ({player2.rating} → {new_player2_rating})"
+            f"{player1_label} {player1_id_str} ({old_player1_rating} → {new_player1_rating}), "
+            f"{player2_label} {player2_id_str} ({old_player2_rating} → {new_player2_rating})"
         )
 
         return new_player1_rating, new_player2_rating
 
     @staticmethod
     async def update_ratings_after_match(
-        db: AsyncSession,
-        winner_id: Union[UUID4, str],
-        loser_id: Union[UUID4, str],
-        match_id: Union[UUID4, str] = None,
+            db: AsyncSession,
+            winner_id: Union[UUID4, str],
+            loser_id: Union[UUID4, str],
+            match: Match,
     ) -> Tuple[int, int]:
         """
         Update ratings after a match using the Elo rating system.
@@ -135,15 +125,15 @@ class RatingService:
             log_context="match",
             player1_label="Winner",
             player2_label="Loser",
-            match_id=match_id,
+            match=match,
         )
 
     @staticmethod
     async def update_ratings_for_draw(
-        db: AsyncSession,
-        player1_id: Union[UUID4, str],
-        player2_id: Union[UUID4, str],
-        match_id: Union[UUID4, str] = None,
+            db: AsyncSession,
+            player1_id: Union[UUID4, str],
+            player2_id: Union[UUID4, str],
+            match: Match,
     ) -> Tuple[int, int]:
         """
         Update ratings after a draw using the Elo rating system.
@@ -157,12 +147,12 @@ class RatingService:
             log_context="draw",
             player1_label="Player1",
             player2_label="Player2",
-            match_id=match_id,
+            match=match,
         )
 
     @staticmethod
     async def fetch_players_and_validate(
-        db: AsyncSession, player1_id: UUID4, player2_id: UUID4
+            db: AsyncSession, player1_id: UUID4, player2_id: UUID4
     ) -> Tuple[User | None, User | None, str, str]:
         """
         Fetch players from the database and validate their existence.

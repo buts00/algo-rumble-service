@@ -27,11 +27,11 @@ submission_logger = logger.getChild("submission")
 class SubmissionService:
     @staticmethod
     async def process_submission(
-        user_id: str,
-        match_id: str,
-        code: str,
-        language: str,
-        db: AsyncSession,
+            user_id: str,
+            match_id: str,
+            code: str,
+            language: str,
+            db: AsyncSession,
     ) -> dict:
         """
         Process a solution submission for a match.
@@ -128,9 +128,8 @@ class SubmissionService:
                 old_winner_rating = winner.rating
                 old_loser_rating = loser.rating
 
-                await RatingService.update_ratings_after_match(
-                    db, winner.id, loser.id, match.id
-                )
+                await RatingService.update_ratings_after_match(db, winner.id, loser.id, match)
+
                 await db.commit()
 
                 submission_logger.info(
