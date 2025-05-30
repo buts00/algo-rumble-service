@@ -13,7 +13,7 @@ services:
       timeout: 5s
       retries: 5
     volumes:
-      - algo_rumble_data:/var/lib/postgresql/data/
+      - algo_rumble_data:/var/lib/postgresql/storage/
 
   redis:
     image: redis:7.4.2
@@ -78,7 +78,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    command: python -m src.business.services.match_consumer
+    command: python -m src.service.services.match_consumer
     env_file:
       - .env
     depends_on:
